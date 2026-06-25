@@ -6,7 +6,6 @@
     <title>Dashboard · Catur Elite</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
     <style>
-        /* ===== SAME STYLE AS YOUR CODE WITH ADDITIONS ===== */
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', Roboto, sans-serif; }
         body {
             min-height: 100vh;
@@ -1062,7 +1061,7 @@
 <div id="toast" class="toast" style="display:none;"></div>
 
 <script>
-    // ===== KONFIGURASI JSONBIN.IO =====
+    // ===== KONFIGURASI =====
     const CONFIG = {
         BIN_ID: '6a3be332f5f4af5e292927ee',
         API_KEY: '$2a$10$vxfP6eqXY7HSyrS5lhE3ZOF8M31rk4PkAvGQvIwKY3H8UnTI5.gPC',
@@ -1100,7 +1099,7 @@
             });
             if (!response.ok) {
                 console.error('HTTP Error:', response.status);
-                throw new Error('Gagal menyimpan data');
+                throw new Error('Gagal menyimpan数据');
             }
             const result = await response.json();
             console.log('✅ Data saved successfully!');
