@@ -383,10 +383,10 @@
             });
             if (!response.ok) throw new Error('Gagal mengambil data');
             const data = await response.json();
-            return data.record || { users: [], rooms: [] };
+            return data.record || { users: [], rooms: [], matchmaking: [] };
         } catch (error) {
             console.error('Error getData:', error);
-            return { users: [], rooms: [] };
+            return { users: [], rooms: [], matchmaking: [] };
         }
     }
 
@@ -500,6 +500,7 @@
     let rewardAmount = 0;
     let colorBadge = document.getElementById('colorBadge');
     let isProcessing = false;
+    let isResigning = false;
 
     // ===== DOM =====
     const boardEl = document.getElementById('chessBoard');
@@ -1090,7 +1091,6 @@
     // ===== HANDLE GAME END =====
     async function handleGameEnd(isWinner, isStalemate, fromLoad = false) {
         if (gameOver && fromLoad) {
-            // Jika sudah gameOver dan dari load, hanya tampilkan modal
             showAnalysisModal(isWinner, isStalemate, analyzeGame(isWinner ? 'user' : 'opponent'));
             return;
         }
@@ -1176,6 +1176,16 @@
             const roomIndex = data.rooms?.findIndex(r => r.roomId === roomId);
             if (roomIndex !== undefined && roomIndex !== -1 && roomIndex >= 0) {
                 data.rooms.splice(roomIndex, 1);
+                // Hapus juga dari matchmaking jika ada
+                if (data.matchmaking) {
+                    data.matchmaking = data.matchmaking.filter(m => m.userId !== room.hostId && m.userId !== room.player2Id);
+                }
+                // Hapus challenges yang terkait
+                data.users.forEach(user => {
+                    if (user.challenges) {
+                        user.challenges = user.challenges.filter(c => c.roomId !== roomId);
+                    }
+                });
                 await updateData(data);
                 console.log('✅ Room deleted:', roomId);
             }
@@ -1257,9 +1267,9 @@
         setTimeout(() => { toast.remove(); }, 3000);
     }
 
-    // ===== RESIGN BUTTON (FIXED) =====
+    // ===== RESIGN BUTTON =====
     document.getElementById('resignBtn').addEventListener('click', async function() {
-        if (isProcessing) return;
+        if (isProcessing || isResigning) return;
         if (!gameActive || gameOver) {
             showToast('⚠️ Game sudah selesai', 'info');
             return;
@@ -1267,6 +1277,7 @@
         
         if (!confirm('Yakin ingin menyerah? ELO akan turun.')) return;
         
+        isResigning = true;
         isProcessing = true;
         this.disabled = true;
         this.textContent = '⏳ Memproses...';
@@ -1283,14 +1294,12 @@
             const opponent = data.users.find(u => u.userId === (isHost ? room.player2Id : room.hostId));
             
             if (currentUser && opponent) {
-                // Hitung ELO
                 const calc = calculateEloChange(opponent.elo || 100, currentUser.elo || 100);
                 const penalty = calc.penalty;
                 rewardAmount = -penalty;
                 currentUser.elo = Math.max(0, (currentUser.elo || 100) - penalty);
                 opponent.elo = Math.min(3000, (opponent.elo || 100) + calc.reward);
                 
-                // Update rank
                 if (currentUser.elo >= 2000) currentUser.rank = 'Grandmaster';
                 else if (currentUser.elo >= 1700) currentUser.rank = 'Master';
                 else if (currentUser.elo >= 1400) currentUser.rank = 'Ahli';
@@ -1334,6 +1343,7 @@
             showToast('❌ Gagal menyerah, coba lagi', 'error');
         } finally {
             isProcessing = false;
+            isResigning = false;
             this.disabled = false;
             this.textContent = '🏳️ Menyerah';
         }
@@ -1342,16 +1352,14 @@
     // ===== BACK TO DASHBOARD =====
     document.getElementById('backToDashboardBtn').addEventListener('click', async function(e) {
         e.preventDefault();
-        if (isProcessing) return;
+        if (isProcessing || isResigning) return;
         
         if (gameActive && !gameOver) {
-            // Jika game aktif, anggap menyerah
             if (confirm('Anda sedang dalam permainan! Keluar akan dianggap menyerah. Lanjutkan?')) {
                 document.getElementById('resignBtn').click();
             }
             return;
         } else {
-            // Jika game sudah selesai atau belum mulai
             await deleteRoom();
             localStorage.removeItem('online_room');
             window.location.href = 'dashboard.html';
