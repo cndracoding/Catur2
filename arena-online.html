@@ -298,7 +298,7 @@
 <body>
 <div class="arena-container">
     <div class="arena-header">
-        <a href="#" class="back-btn" id="backToDashboardBtn"><i class="fas fa-arrow-left"></i> Dashboard</a>
+        <a href="dashboard.html" class="back-btn" id="backToDashboardBtn"><i class="fas fa-arrow-left"></i> Dashboard</a>
         <div class="info">
             <span class="room-id" id="roomIdDisplay">🏠 Room: 00000000</span>
             <span class="players" id="playersDisplay">
@@ -412,7 +412,7 @@
     function getUserSession() {
         const data = localStorage.getItem('chess_user');
         if (!data) {
-            window.location.href = 'index.html';
+            // Jangan redirect di sini, biarkan fungsi memanggilnya
             return null;
         }
         try {
@@ -421,12 +421,10 @@
                 return parsed;
             } else {
                 localStorage.removeItem('chess_user');
-                window.location.href = 'index.html';
                 return null;
             }
         } catch (e) {
             localStorage.removeItem('chess_user');
-            window.location.href = 'index.html';
             return null;
         }
     }
@@ -952,7 +950,10 @@
             }
 
             const user = getUserSession();
-            if (!user) return;
+            if (!user) {
+                window.location.href = 'index.html';
+                return;
+            }
 
             const host = data.users.find(u => u.userId === room.hostId);
             const player2 = room.player2Id ? data.users.find(u => u.userId === room.player2Id) : null;
@@ -1173,19 +1174,21 @@
     async function deleteRoom() {
         try {
             const data = await getData();
-            const roomIndex = data.rooms?.findIndex(r => r.roomId === roomId);
-            if (roomIndex !== undefined && roomIndex !== -1 && roomIndex >= 0) {
+            if (!data.rooms) return;
+            
+            const roomIndex = data.rooms.findIndex(r => r.roomId === roomId);
+            if (roomIndex !== -1) {
                 data.rooms.splice(roomIndex, 1);
-                // Hapus juga dari matchmaking jika ada
-                if (data.matchmaking) {
-                    data.matchmaking = data.matchmaking.filter(m => m.userId !== room.hostId && m.userId !== room.player2Id);
-                }
+                
                 // Hapus challenges yang terkait
-                data.users.forEach(user => {
-                    if (user.challenges) {
-                        user.challenges = user.challenges.filter(c => c.roomId !== roomId);
-                    }
-                });
+                if (data.users) {
+                    data.users.forEach(user => {
+                        if (user.challenges) {
+                            user.challenges = user.challenges.filter(c => c.roomId !== roomId);
+                        }
+                    });
+                }
+                
                 await updateData(data);
                 console.log('✅ Room deleted:', roomId);
             }
@@ -1401,7 +1404,10 @@
         isHost = roomSession.isHost;
 
         const user = getUserSession();
-        if (!user) return;
+        if (!user) {
+            window.location.href = 'index.html';
+            return;
+        }
 
         roomIdDisplay.textContent = `🏠 Room: ${roomId}`;
         board = createEmptyBoard();
