@@ -483,6 +483,7 @@
     let isHost = false;
     let opponentName = 'Menunggu...';
     let opponentElo = 100;
+    let opponentId = null;
     let myName = '';
     let myElo = 100;
     let refreshInterval = null;
@@ -498,6 +499,7 @@
     let gameStartTime = null;
     let rewardAmount = 0;
     let colorBadge = document.getElementById('colorBadge');
+    let isResigning = false;
 
     // ===== DOM =====
     const boardEl = document.getElementById('chessBoard');
@@ -781,7 +783,6 @@
         boardEl.innerHTML = '';
         const isMyTurn = currentTurn === userColor && gameActive && !gameOver;
         
-        // FLIP BOARD berdasarkan userColor (Host = Putih, Player2 = Hitam)
         const shouldFlip = userColor === 'b';
         const rows = shouldFlip ? [7,6,5,4,3,2,1,0] : [0,1,2,3,4,5,6,7];
         
@@ -963,6 +964,7 @@
             if (player2) {
                 opponentName = user.userId === room.hostId ? player2Name : hostName;
                 opponentElo = user.userId === room.hostId ? player2Elo : hostElo;
+                opponentId = user.userId === room.hostId ? room.player2Id : room.hostId;
                 myElo = user.userId === room.hostId ? hostElo : player2Elo;
                 waitingOverlay.style.display = 'none';
                 gameActive = true;
@@ -1003,7 +1005,6 @@
             userColor = user.userId === room.hostId ? 'w' : 'b';
             myName = user.username;
             
-            // Update color badge
             if (userColor === 'w') {
                 colorBadge.textContent = '⚪ Putih';
                 colorBadge.className = 'color-badge white';
@@ -1156,9 +1157,26 @@
         
         if (!fromLoad) {
             await saveGameState();
+            // Hapus room setelah game selesai
+            await deleteRoom();
         }
         
         showAnalysisModal(isWinner, isStalemate, analysis);
+    }
+
+    // ===== DELETE ROOM =====
+    async function deleteRoom() {
+        try {
+            const data = await getData();
+            const roomIndex = data.rooms?.findIndex(r => r.roomId === roomId);
+            if (roomIndex !== undefined && roomIndex !== -1 && roomIndex >= 0) {
+                data.rooms.splice(roomIndex, 1);
+                await updateData(data);
+                console.log('✅ Room deleted:', roomId);
+            }
+        } catch (error) {
+            console.error('Error deleting room:', error);
+        }
     }
 
     // ===== SHOW ANALYSIS MODAL =====
@@ -1234,31 +1252,51 @@
         setTimeout(() => { toast.remove(); }, 3000);
     }
 
-    // ===== RESIGN =====
+    // ===== RESIGN (FIXED) =====
     document.getElementById('resignBtn').addEventListener('click', async () => {
-        if (!gameActive || gameOver) return;
+        if (!gameActive || gameOver || isResigning) return;
+        
         if (confirm('Yakin ingin menyerah? ELO akan turun.')) {
-            const user = getUserSession();
-            if (user) {
+            isResigning = true;
+            
+            try {
+                const user = getUserSession();
+                if (!user) return;
+                
                 const data = await getData();
                 const currentUser = data.users.find(u => u.userId === user.userId);
-                const opponentId = isHost ? room.player2Id : room.hostId;
-                const opponent = data.users.find(u => u.userId === opponentId);
+                const opponent = data.users.find(u => u.userId === (isHost ? room.player2Id : room.hostId));
                 
                 if (currentUser && opponent) {
+                    // Hitung ELO berdasarkan rank opponent
                     const calc = calculateEloChange(opponent.elo || 100, currentUser.elo || 100);
                     const penalty = calc.penalty;
                     rewardAmount = -penalty;
                     currentUser.elo = Math.max(0, (currentUser.elo || 100) - penalty);
                     
+                    // Lawan dapat reward
+                    opponent.elo = Math.min(3000, (opponent.elo || 100) + calc.reward);
+                    
+                    // Update rank
                     if (currentUser.elo >= 2000) currentUser.rank = 'Grandmaster';
                     else if (currentUser.elo >= 1700) currentUser.rank = 'Master';
                     else if (currentUser.elo >= 1400) currentUser.rank = 'Ahli';
                     else if (currentUser.elo >= 1200) currentUser.rank = 'Menengah';
                     else currentUser.rank = 'Pemula';
                     
+                    if (opponent.elo >= 2000) opponent.rank = 'Grandmaster';
+                    else if (opponent.elo >= 1700) opponent.rank = 'Master';
+                    else if (opponent.elo >= 1400) opponent.rank = 'Ahli';
+                    else if (opponent.elo >= 1200) opponent.rank = 'Menengah';
+                    else opponent.rank = 'Pemula';
+                    
+                    // Update stats
                     currentUser.gamesPlayed = (currentUser.gamesPlayed || 0) + 1;
                     currentUser.currentStreak = 0;
+                    
+                    opponent.gamesPlayed = (opponent.gamesPlayed || 0) + 1;
+                    opponent.gamesWon = (opponent.gamesWon || 0) + 1;
+                    opponent.currentStreak = (opponent.currentStreak || 0) + 1;
                     
                     await updateData(data);
                     
@@ -1268,16 +1306,25 @@
                         elo: currentUser.elo,
                         rank: currentUser.rank
                     }));
+                    
+                    // Tampilkan pesan untuk user yang menyerah
+                    gameActive = false;
+                    gameOver = true;
+                    if (refreshInterval) clearInterval(refreshInterval);
+                    
+                    const analysis = analyzeGame('opponent');
+                    showAnalysisModal(false, false, analysis);
+                    await saveGameState();
+                    await deleteRoom();
+                    
+                    // Kirim notifikasi ke lawan (akan di-load saat refresh)
                 }
+            } catch (error) {
+                console.error('Error resigning:', error);
+                showToast('❌ Gagal menyerah', 'error');
+            } finally {
+                isResigning = false;
             }
-            
-            gameActive = false;
-            gameOver = true;
-            if (refreshInterval) clearInterval(refreshInterval);
-            
-            const analysis = analyzeGame('opponent');
-            showAnalysisModal(false, false, analysis);
-            await saveGameState();
         }
     });
 
