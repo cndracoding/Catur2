@@ -253,10 +253,10 @@
             });
             if (!response.ok) throw new Error('Gagal mengambil data');
             const data = await response.json();
-            return data.record || { users: [], rooms: [] };
+            return data.record || { users: [], rooms: [], matchmaking: [] };
         } catch (error) {
             console.error('Error getData:', error);
-            return { users: [], rooms: [] };
+            return { users: [], rooms: [], matchmaking: [] };
         }
     }
 
@@ -638,7 +638,8 @@
                 status: 'offline',
                 friends: [],
                 friendRequests: [],
-                sentRequests: []
+                sentRequests: [],
+                challenges: []  // <-- TAMBAHKAN INI
             };
 
             data.users.push(newUser);
