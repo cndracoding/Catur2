@@ -948,6 +948,9 @@ async function saveGameState() {
     }
 }
 
+// ============================================================
+// ==================== LOAD GAME STATE ========================
+// ============================================================
 async function loadGameState() {
     try {
         const data = await getData();
@@ -1006,11 +1009,22 @@ async function loadGameState() {
         }
         renderBoard();
         updateStatus();
+        
+        // CEK: Jika game sudah selesai, tampilkan modal untuk lawan juga
         if (gameOver) {
-            const st = gameStatus(board, currentTurn);
-            const isWinner = (st === 'checkmate' && currentTurn !== userColor);
-            const isStalemate = st === 'stalemate';
-            handleGameEnd(isWinner, isStalemate, true);
+            const alreadyShown = sessionStorage.getItem('modal_shown_' + roomId);
+            if (!alreadyShown) {
+                sessionStorage.setItem('modal_shown_' + roomId, 'true');
+                
+                const gameResult = room.gameResult || {};
+                const isWinner = gameResult.winner === 'user';
+                const isStalemate = gameResult.isStalemate || false;
+                const analysis = gameResult.analysis || analyzeGame(isWinner ? 'user' : 'opponent');
+                const rewardAmt = gameResult.rewardAmount || 0;
+                rewardAmount = rewardAmt;
+                
+                showAnalysisModal(isWinner, isStalemate, analysis);
+            }
         }
     } catch (error) {
         console.error('❌ loadGameState error:', error);
@@ -1060,15 +1074,26 @@ function analyzeGame(winner) {
 // ============================================================
 async function handleGameEnd(isWinner, isStalemate, fromLoad = false) {
     console.log('📊 handleGameEnd:', { isWinner, isStalemate, fromLoad });
-    if (gameOver && fromLoad) {
-        showAnalysisModal(isWinner, isStalemate, analyzeGame(isWinner ? 'user' : 'opponent'));
+    
+    if (fromLoad && gameOver) {
+        const alreadyShown = sessionStorage.getItem('modal_shown_' + roomId);
+        if (!alreadyShown) {
+            sessionStorage.setItem('modal_shown_' + roomId, 'true');
+            const st = gameStatus(board, currentTurn);
+            const isWinnerLocal = (st === 'checkmate' && currentTurn !== userColor);
+            const isStalemateLocal = st === 'stalemate';
+            showAnalysisModal(isWinnerLocal, isStalemateLocal, analyzeGame(isWinnerLocal ? 'user' : 'opponent'));
+        }
         return;
     }
+    
     gameOver = true;
     gameActive = false;
     if (refreshInterval) clearInterval(refreshInterval);
+    
     const analysis = analyzeGame(isWinner ? 'user' : 'opponent');
     let reward = 0, penalty = 0;
+    
     if (!isStalemate) {
         try {
             const user = getUserSession();
@@ -1087,13 +1112,17 @@ async function handleGameEnd(isWinner, isStalemate, fromLoad = false) {
                             reward = calc.reward;
                             rewardAmount = reward;
                             currentUser.elo = Math.min(3000, myElo + reward);
+                            opponent.elo = Math.max(0, (opponent.elo || 100) - calc.penalty);
                         } else {
                             const calc = calculateEloChange(oppElo, myElo);
                             penalty = calc.penalty;
                             rewardAmount = -penalty;
                             currentUser.elo = Math.max(0, myElo - penalty);
+                            opponent.elo = Math.min(3000, (opponent.elo || 100) + calc.reward);
                         }
                         updateRank(currentUser);
+                        updateRank(opponent);
+                        
                         currentUser.gamesPlayed = (currentUser.gamesPlayed || 0) + 1;
                         if (isWinner) {
                             currentUser.gamesWon = (currentUser.gamesWon || 0) + 1;
@@ -1106,7 +1135,8 @@ async function handleGameEnd(isWinner, isStalemate, fromLoad = false) {
                             currentUser.totalSpeed = (currentUser.totalSpeed || 0) + (analysis.avgSpeed || 0);
                             currentUser.gamesWithStats = (currentUser.gamesWithStats || 0) + 1;
                         }
-                        // Update opponent
+                        
+                        // Update opponent stats
                         if (!isWinner) {
                             opponent.gamesWon = (opponent.gamesWon || 0) + 1;
                             opponent.currentStreak = (opponent.currentStreak || 0) + 1;
@@ -1114,7 +1144,15 @@ async function handleGameEnd(isWinner, isStalemate, fromLoad = false) {
                             opponent.currentStreak = 0;
                         }
                         opponent.gamesPlayed = (opponent.gamesPlayed || 0) + 1;
+                        
                         room.status = 'finished';
+                        room.gameResult = {
+                            winner: isWinner ? 'user' : 'opponent',
+                            isStalemate: false,
+                            analysis: analysis,
+                            rewardAmount: rewardAmount
+                        };
+                        
                         await updateData(data);
                         saveUserSession(currentUser);
                         console.log('✅ Stats updated');
@@ -1126,11 +1164,28 @@ async function handleGameEnd(isWinner, isStalemate, fromLoad = false) {
         }
     } else {
         rewardAmount = 0;
+        try {
+            const data = await getData();
+            const room = data.rooms?.find(r => r.roomId === roomId);
+            if (room) {
+                room.status = 'finished';
+                room.gameResult = {
+                    winner: null,
+                    isStalemate: true,
+                    analysis: analysis,
+                    rewardAmount: 0
+                };
+                await updateData(data);
+            }
+        } catch (e) {}
     }
-    try { await deleteRoom(); } catch (e) { console.error('❌ deleteRoom error:', e); }
+    
     showAnalysisModal(isWinner, isStalemate, analysis);
 }
 
+// ============================================================
+// ==================== DELETE ROOM ============================
+// ============================================================
 async function deleteRoom() {
     try {
         const data = await getData();
@@ -1153,6 +1208,13 @@ async function deleteRoom() {
     }
 }
 
+function clearModalFlag() {
+    sessionStorage.removeItem('modal_shown_' + roomId);
+}
+
+// ============================================================
+// ==================== SHOW ANALYSIS MODAL ====================
+// ============================================================
 function showAnalysisModal(isWinner, isStalemate, analysis) {
     const rewardText = rewardAmount > 0 ? `+${rewardAmount} ELO` : rewardAmount < 0 ? `${rewardAmount} ELO` : '0 ELO';
     if (isStalemate) {
@@ -1246,7 +1308,16 @@ resignBtn.addEventListener('click', async function() {
         opponent.gamesWon = (opponent.gamesWon || 0) + 1;
         opponent.currentStreak = (opponent.currentStreak || 0) + 1;
         
+        const analysis = analyzeGame('opponent');
+        
         room.status = 'finished';
+        room.gameResult = {
+            winner: 'opponent',
+            isStalemate: false,
+            analysis: analysis,
+            rewardAmount: rewardAmount
+        };
+        
         await updateData(data);
         saveUserSession(currentUser);
         
@@ -1254,14 +1325,15 @@ resignBtn.addEventListener('click', async function() {
         gameOver = true;
         if (refreshInterval) clearInterval(refreshInterval);
         
-        const analysis = analyzeGame('opponent');
-        await deleteRoom();
         showAnalysisModal(false, false, analysis);
         
         console.log('✅ Resign complete');
     } catch (error) {
         console.error('❌ Resign error:', error);
         showToast('❌ Gagal menyerah: ' + error.message, 'error');
+        this.disabled = false;
+        this.innerHTML = '<i class="fas fa-flag"></i> Menyerah';
+        isProcessing = false;
     } finally {
         this.disabled = false;
         this.innerHTML = '<i class="fas fa-flag"></i> Menyerah';
@@ -1280,15 +1352,15 @@ backBtn.addEventListener('click', async function(e) {
         if (!confirm('Anda sedang dalam permainan! Keluar akan dianggap menyerah. Lanjutkan?')) {
             return;
         }
-        // Trigger resign
         if (!resignBtn.disabled) {
             resignBtn.click();
-            // Tunggu sebentar
             let wait = 0;
             const interval = setInterval(() => {
                 wait += 500;
                 if (gameOver || wait >= 5000) {
                     clearInterval(interval);
+                    clearModalFlag();
+                    try { deleteRoom(); } catch (e) {}
                     localStorage.removeItem('online_room');
                     window.location.href = 'dashboard.html';
                 }
@@ -1297,7 +1369,7 @@ backBtn.addEventListener('click', async function(e) {
         }
     }
     
-    // Jika game sudah selesai atau tidak aktif
+    clearModalFlag();
     try { await deleteRoom(); } catch (e) {}
     localStorage.removeItem('online_room');
     window.location.href = 'dashboard.html';
@@ -1308,6 +1380,7 @@ backBtn.addEventListener('click', async function(e) {
 // ============================================================
 modalCloseBtn.addEventListener('click', async () => {
     modal.classList.remove('show');
+    clearModalFlag();
     try { await deleteRoom(); } catch (e) {}
     localStorage.removeItem('online_room');
     window.location.href = 'dashboard.html';
