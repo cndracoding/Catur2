@@ -298,7 +298,7 @@
 <body>
 <div class="arena-container">
     <div class="arena-header">
-        <a href="dashboard.html" class="back-btn" id="backToDashboardBtn"><i class="fas fa-arrow-left"></i> Dashboard</a>
+        <a href="#" class="back-btn" id="backToDashboardBtn"><i class="fas fa-arrow-left"></i> Dashboard</a>
         <div class="info">
             <span class="room-id" id="roomIdDisplay">🏠 Room: 00000000</span>
             <span class="players" id="playersDisplay">
@@ -500,6 +500,7 @@
     let rewardAmount = 0;
     let colorBadge = document.getElementById('colorBadge');
     let isResigning = false;
+    let isLeaving = false;
 
     // ===== DOM =====
     const boardEl = document.getElementById('chessBoard');
@@ -1157,7 +1158,6 @@
         
         if (!fromLoad) {
             await saveGameState();
-            // Hapus room setelah game selesai
             await deleteRoom();
         }
         
@@ -1176,6 +1176,98 @@
             }
         } catch (error) {
             console.error('Error deleting room:', error);
+        }
+    }
+
+    // ===== HANDLE RESIGN / LEAVE =====
+    async function handleResignOrLeave(isResign = true) {
+        if (isLeaving || isResigning) return;
+        
+        if (!gameActive || gameOver) {
+            // Jika game sudah selesai, langsung hapus room dan kembali
+            await deleteRoom();
+            localStorage.removeItem('online_room');
+            window.location.href = 'dashboard.html';
+            return;
+        }
+        
+        if (isResign && !confirm('Yakin ingin menyerah? ELO akan turun.')) {
+            return;
+        }
+        
+        isLeaving = true;
+        isResigning = isResign;
+        
+        try {
+            const user = getUserSession();
+            if (!user) {
+                localStorage.removeItem('online_room');
+                window.location.href = 'dashboard.html';
+                return;
+            }
+            
+            const data = await getData();
+            const currentUser = data.users.find(u => u.userId === user.userId);
+            const opponent = data.users.find(u => u.userId === (isHost ? room.player2Id : room.hostId));
+            
+            if (currentUser && opponent && isResign && gameActive) {
+                // Hitung ELO
+                const calc = calculateEloChange(opponent.elo || 100, currentUser.elo || 100);
+                const penalty = calc.penalty;
+                rewardAmount = -penalty;
+                currentUser.elo = Math.max(0, (currentUser.elo || 100) - penalty);
+                opponent.elo = Math.min(3000, (opponent.elo || 100) + calc.reward);
+                
+                // Update rank
+                if (currentUser.elo >= 2000) currentUser.rank = 'Grandmaster';
+                else if (currentUser.elo >= 1700) currentUser.rank = 'Master';
+                else if (currentUser.elo >= 1400) currentUser.rank = 'Ahli';
+                else if (currentUser.elo >= 1200) currentUser.rank = 'Menengah';
+                else currentUser.rank = 'Pemula';
+                
+                if (opponent.elo >= 2000) opponent.rank = 'Grandmaster';
+                else if (opponent.elo >= 1700) opponent.rank = 'Master';
+                else if (opponent.elo >= 1400) opponent.rank = 'Ahli';
+                else if (opponent.elo >= 1200) opponent.rank = 'Menengah';
+                else opponent.rank = 'Pemula';
+                
+                currentUser.gamesPlayed = (currentUser.gamesPlayed || 0) + 1;
+                currentUser.currentStreak = 0;
+                
+                opponent.gamesPlayed = (opponent.gamesPlayed || 0) + 1;
+                opponent.gamesWon = (opponent.gamesWon || 0) + 1;
+                opponent.currentStreak = (opponent.currentStreak || 0) + 1;
+                
+                await updateData(data);
+                
+                localStorage.setItem('chess_user', JSON.stringify({
+                    userId: currentUser.userId,
+                    username: currentUser.username,
+                    elo: currentUser.elo,
+                    rank: currentUser.rank
+                }));
+                
+                gameActive = false;
+                gameOver = true;
+                if (refreshInterval) clearInterval(refreshInterval);
+                
+                const analysis = analyzeGame('opponent');
+                showAnalysisModal(false, false, analysis);
+                await saveGameState();
+                await deleteRoom();
+            } else if (!isResign) {
+                // Hanya keluar tanpa penalti (jika belum mulai)
+                await deleteRoom();
+                localStorage.removeItem('online_room');
+                window.location.href = 'dashboard.html';
+                return;
+            }
+        } catch (error) {
+            console.error('Error handling resign/leave:', error);
+            showToast('❌ Gagal memproses, coba lagi', 'error');
+        } finally {
+            isLeaving = false;
+            isResigning = false;
         }
     }
 
@@ -1252,83 +1344,33 @@
         setTimeout(() => { toast.remove(); }, 3000);
     }
 
-    // ===== RESIGN (FIXED) =====
-    document.getElementById('resignBtn').addEventListener('click', async () => {
-        if (!gameActive || gameOver || isResigning) return;
-        
-        if (confirm('Yakin ingin menyerah? ELO akan turun.')) {
-            isResigning = true;
-            
-            try {
-                const user = getUserSession();
-                if (!user) return;
-                
-                const data = await getData();
-                const currentUser = data.users.find(u => u.userId === user.userId);
-                const opponent = data.users.find(u => u.userId === (isHost ? room.player2Id : room.hostId));
-                
-                if (currentUser && opponent) {
-                    // Hitung ELO berdasarkan rank opponent
-                    const calc = calculateEloChange(opponent.elo || 100, currentUser.elo || 100);
-                    const penalty = calc.penalty;
-                    rewardAmount = -penalty;
-                    currentUser.elo = Math.max(0, (currentUser.elo || 100) - penalty);
-                    
-                    // Lawan dapat reward
-                    opponent.elo = Math.min(3000, (opponent.elo || 100) + calc.reward);
-                    
-                    // Update rank
-                    if (currentUser.elo >= 2000) currentUser.rank = 'Grandmaster';
-                    else if (currentUser.elo >= 1700) currentUser.rank = 'Master';
-                    else if (currentUser.elo >= 1400) currentUser.rank = 'Ahli';
-                    else if (currentUser.elo >= 1200) currentUser.rank = 'Menengah';
-                    else currentUser.rank = 'Pemula';
-                    
-                    if (opponent.elo >= 2000) opponent.rank = 'Grandmaster';
-                    else if (opponent.elo >= 1700) opponent.rank = 'Master';
-                    else if (opponent.elo >= 1400) opponent.rank = 'Ahli';
-                    else if (opponent.elo >= 1200) opponent.rank = 'Menengah';
-                    else opponent.rank = 'Pemula';
-                    
-                    // Update stats
-                    currentUser.gamesPlayed = (currentUser.gamesPlayed || 0) + 1;
-                    currentUser.currentStreak = 0;
-                    
-                    opponent.gamesPlayed = (opponent.gamesPlayed || 0) + 1;
-                    opponent.gamesWon = (opponent.gamesWon || 0) + 1;
-                    opponent.currentStreak = (opponent.currentStreak || 0) + 1;
-                    
-                    await updateData(data);
-                    
-                    localStorage.setItem('chess_user', JSON.stringify({
-                        userId: currentUser.userId,
-                        username: currentUser.username,
-                        elo: currentUser.elo,
-                        rank: currentUser.rank
-                    }));
-                    
-                    // Tampilkan pesan untuk user yang menyerah
-                    gameActive = false;
-                    gameOver = true;
-                    if (refreshInterval) clearInterval(refreshInterval);
-                    
-                    const analysis = analyzeGame('opponent');
-                    showAnalysisModal(false, false, analysis);
-                    await saveGameState();
-                    await deleteRoom();
-                    
-                    // Kirim notifikasi ke lawan (akan di-load saat refresh)
-                }
-            } catch (error) {
-                console.error('Error resigning:', error);
-                showToast('❌ Gagal menyerah', 'error');
-            } finally {
-                isResigning = false;
-            }
+    // ===== RESIGN BUTTON =====
+    document.getElementById('resignBtn').addEventListener('click', () => {
+        handleResignOrLeave(true);
+    });
+
+    // ===== BACK TO DASHBOARD =====
+    document.getElementById('backToDashboardBtn').addEventListener('click', (e) => {
+        e.preventDefault();
+        // Jika game aktif, anggap menyerah
+        if (gameActive && !gameOver) {
+            handleResignOrLeave(true);
+        } else {
+            // Jika game sudah selesai atau belum mulai, langsung keluar
+            handleResignOrLeave(false);
         }
     });
 
-    // ===== EVENT LISTENERS =====
+    // ===== MODAL CLOSE =====
+    modalCloseBtn.addEventListener('click', async () => {
+        modal.classList.remove('show');
+        // Hapus room dan session
+        await deleteRoom();
+        localStorage.removeItem('online_room');
+        window.location.href = 'dashboard.html';
+    });
+
+    // ===== COPY ROOM =====
     document.getElementById('copyRoomBtn').addEventListener('click', () => {
         navigator.clipboard.writeText(roomId).then(() => {
             showToast('✅ ID Room disalin!', 'success');
@@ -1341,20 +1383,6 @@
             document.body.removeChild(input);
             showToast('✅ ID Room disalin!', 'success');
         });
-    });
-
-    document.getElementById('backToDashboardBtn').addEventListener('click', (e) => {
-        e.preventDefault();
-        if (confirm('Yakin ingin kembali ke dashboard? Game akan berakhir.')) {
-            localStorage.removeItem('online_room');
-            window.location.href = 'dashboard.html';
-        }
-    });
-
-    modalCloseBtn.addEventListener('click', () => {
-        modal.classList.remove('show');
-        localStorage.removeItem('online_room');
-        window.location.href = 'dashboard.html';
     });
 
     // ===== INIT =====
