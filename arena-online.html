@@ -367,745 +367,763 @@
     </div>
 </div>
 
-<script>
-    // ===== KONFIGURASI =====
-    const CONFIG = {
-        BIN_ID: '6a3be332f5f4af5e292927ee',
-        API_KEY: '$2a$10$vxfP6eqXY7HSyrS5lhE3ZOF8M31rk4PkAvGQvIwKY3H8UnTI5.gPC',
-        BASE_URL: 'https://api.jsonbin.io/v3/b'
-    };
+<script>// ===== KONFIGURASI =====
+const CONFIG = {
+    BIN_ID: '6a3be332f5f4af5e292927ee',
+    API_KEY: '$2a$10$vxfP6eqXY7HSyrS5lhE3ZOF8M31rk4PkAvGQvIwKY3H8UnTI5.gPC',
+    BASE_URL: 'https://api.jsonbin.io/v3/b'
+};
 
-    // ===== FUNGSI JSONBIN =====
-    async function getData() {
-        try {
-            const response = await fetch(`${CONFIG.BASE_URL}/${CONFIG.BIN_ID}`, {
-                headers: { 'X-Master-Key': CONFIG.API_KEY }
-            });
-            if (!response.ok) throw new Error('Gagal mengambil data');
-            const data = await response.json();
-            return data.record || { users: [], rooms: [], matchmaking: [] };
-        } catch (error) {
-            console.error('Error getData:', error);
-            return { users: [], rooms: [], matchmaking: [] };
-        }
+// ===== FUNGSI JSONBIN =====
+async function getData() {
+    try {
+        const response = await fetch(`${CONFIG.BASE_URL}/${CONFIG.BIN_ID}`, {
+            headers: { 'X-Master-Key': CONFIG.API_KEY }
+        });
+        if (!response.ok) throw new Error('Gagal mengambil data');
+        const data = await response.json();
+        return data.record || { users: [], rooms: [], matchmaking: [] };
+    } catch (error) {
+        console.error('Error getData:', error);
+        return { users: [], rooms: [], matchmaking: [] };
     }
+}
 
-    async function updateData(data) {
-        try {
-            const response = await fetch(`${CONFIG.BASE_URL}/${CONFIG.BIN_ID}`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Master-Key': CONFIG.API_KEY
-                },
-                body: JSON.stringify(data)
-            });
-            if (!response.ok) throw new Error('Gagal menyimpan data');
-            return await response.json();
-        } catch (error) {
-            console.error('Error updateData:', error);
-            throw error;
-        }
+async function updateData(data) {
+    try {
+        const response = await fetch(`${CONFIG.BASE_URL}/${CONFIG.BIN_ID}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Master-Key': CONFIG.API_KEY
+            },
+            body: JSON.stringify(data)
+        });
+        if (!response.ok) throw new Error('Gagal menyimpan data');
+        return await response.json();
+    } catch (error) {
+        console.error('Error updateData:', error);
+        throw error;
     }
+}
 
-    // ===== SESSION =====
-    function getUserSession() {
-        const data = localStorage.getItem('chess_user');
-        if (!data) {
-            // Jangan redirect di sini, biarkan fungsi memanggilnya
-            return null;
-        }
-        try {
-            const parsed = JSON.parse(data);
-            if (parsed && parsed.username && parsed.userId) {
-                return parsed;
-            } else {
-                localStorage.removeItem('chess_user');
-                return null;
-            }
-        } catch (e) {
+// ===== SESSION =====
+function getUserSession() {
+    const data = localStorage.getItem('chess_user');
+    if (!data) return null;
+    try {
+        const parsed = JSON.parse(data);
+        if (parsed && parsed.username && parsed.userId) {
+            return parsed;
+        } else {
             localStorage.removeItem('chess_user');
             return null;
         }
+    } catch (e) {
+        localStorage.removeItem('chess_user');
+        return null;
     }
+}
 
-    function getRoomSession() {
-        const data = localStorage.getItem('online_room');
-        if (!data) return null;
-        try {
-            return JSON.parse(data);
-        } catch (e) {
-            return null;
-        }
+function getRoomSession() {
+    const data = localStorage.getItem('online_room');
+    if (!data) return null;
+    try {
+        return JSON.parse(data);
+    } catch (e) {
+        return null;
     }
+}
 
-    // ===== GET RANK =====
-    function getRank(elo) {
-        if (elo >= 2000) return { label: 'Grandmaster', class: 'grandmaster' };
-        if (elo >= 1700) return { label: 'Master', class: 'master' };
-        if (elo >= 1400) return { label: 'Ahli', class: 'ahli' };
-        if (elo >= 1200) return { label: 'Menengah', class: 'menengah' };
-        return { label: 'Pemula', class: 'pemula' };
+// ===== TOAST =====
+function showToast(message, type = 'info') {
+    const existing = document.querySelector('.toast');
+    if (existing) existing.remove();
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.textContent = message;
+    toast.style.cssText = `
+        position: fixed; bottom: 20px; right: 20px; 
+        padding: 0.8rem 1.5rem; border-radius: 1rem; 
+        color: white; font-weight: 600; z-index: 9999;
+        animation: slideUp 0.3s ease; max-width: 350px;
+        background: ${type === 'success' ? '#3d7a4a' : type === 'error' ? '#7a4a4a' : '#2f5b8a'};
+    `;
+    document.body.appendChild(toast);
+    setTimeout(() => { toast.remove(); }, 3000);
+}
+
+// ===== GET RANK =====
+function getRank(elo) {
+    if (elo >= 2000) return { label: 'Grandmaster', class: 'grandmaster' };
+    if (elo >= 1700) return { label: 'Master', class: 'master' };
+    if (elo >= 1400) return { label: 'Ahli', class: 'ahli' };
+    if (elo >= 1200) return { label: 'Menengah', class: 'menengah' };
+    return { label: 'Pemula', class: 'pemula' };
+}
+
+// ===== ELO CALCULATION =====
+function calculateEloChange(winnerElo, loserElo) {
+    const diff = Math.abs(winnerElo - loserElo);
+    let reward = 15;
+    let penalty = 10;
+    
+    if (diff <= 50) { reward = 15; penalty = 10; }
+    else if (diff <= 150) { reward = 20; penalty = 15; }
+    else if (diff <= 300) { reward = 28; penalty = 20; }
+    else { reward = 35; penalty = 25; }
+    
+    if (winnerElo < loserElo) {
+        reward = Math.min(45, reward + 10);
+        penalty = Math.max(5, penalty - 5);
+    } else if (winnerElo > loserElo) {
+        reward = Math.max(8, reward - 5);
+        penalty = Math.min(30, penalty + 5);
     }
+    return { reward, penalty };
+}
 
-    // ===== ELO CALCULATION =====
-    function calculateEloChange(winnerElo, loserElo) {
-        const diff = Math.abs(winnerElo - loserElo);
-        let reward = 15;
-        let penalty = 10;
-        
-        if (diff <= 50) { reward = 15; penalty = 10; }
-        else if (diff <= 150) { reward = 20; penalty = 15; }
-        else if (diff <= 300) { reward = 28; penalty = 20; }
-        else { reward = 35; penalty = 25; }
-        
-        if (winnerElo < loserElo) {
-            reward = Math.min(45, reward + 10);
-            penalty = Math.max(5, penalty - 5);
-        } else if (winnerElo > loserElo) {
-            reward = Math.max(8, reward - 5);
-            penalty = Math.min(30, penalty + 5);
-        }
-        return { reward, penalty };
+// ===== STATE =====
+let board = [];
+let currentTurn = 'w';
+let selectedSquare = null;
+let legalMovesForSelected = [];
+let gameActive = false;
+let gameOver = false;
+let userColor = 'w';
+let roomId = null;
+let isHost = false;
+let opponentName = 'Menunggu...';
+let opponentElo = 100;
+let opponentId = null;
+let myName = '';
+let myElo = 100;
+let refreshInterval = null;
+let lastMove = null;
+let enPassantTarget = null;
+let castling = {
+    w: { kingSide: true, queenSide: true },
+    b: { kingSide: true, queenSide: true }
+};
+let pendingPromotion = null;
+let gameMoves = [];
+let moveTimestamps = [];
+let gameStartTime = null;
+let rewardAmount = 0;
+let colorBadge = document.getElementById('colorBadge');
+let isProcessing = false;
+let isResigning = false;
+let isRedirecting = false; // Tambahkan flag untuk redirect
+
+// ===== DOM =====
+const boardEl = document.getElementById('chessBoard');
+const statusText = document.getElementById('statusText');
+const roomIdDisplay = document.getElementById('roomIdDisplay');
+const playersDisplay = document.getElementById('playersDisplay');
+const waitingOverlay = document.getElementById('waitingOverlay');
+const modal = document.getElementById('gameOverModal');
+const resultIcon = document.getElementById('resultIcon');
+const modalTitle = document.getElementById('modalTitle');
+const modalSub = document.getElementById('modalSub');
+const modalCloseBtn = document.getElementById('modalCloseBtn');
+const promotionModal = document.getElementById('promotionModal');
+const promotionOptions = document.getElementById('promotionOptions');
+
+// ===== FUNGSI CATUR =====
+function createEmptyBoard() {
+    const b = Array(8).fill().map(() => Array(8).fill(null));
+    const back = ['r','n','b','q','k','b','n','r'];
+    for (let c=0; c<8; c++) {
+        b[0][c] = { type: back[c], color: 'b' };
+        b[1][c] = { type: 'p', color: 'b' };
+        b[6][c] = { type: 'p', color: 'w' };
+        b[7][c] = { type: back[c], color: 'w' };
     }
-
-    // ===== STATE =====
-    let board = [];
-    let currentTurn = 'w';
-    let selectedSquare = null;
-    let legalMovesForSelected = [];
-    let gameActive = false;
-    let gameOver = false;
-    let userColor = 'w';
-    let roomId = null;
-    let isHost = false;
-    let opponentName = 'Menunggu...';
-    let opponentElo = 100;
-    let opponentId = null;
-    let myName = '';
-    let myElo = 100;
-    let refreshInterval = null;
-    let lastMove = null;
-    let enPassantTarget = null;
-    let castling = {
+    castling = {
         w: { kingSide: true, queenSide: true },
         b: { kingSide: true, queenSide: true }
     };
-    let pendingPromotion = null;
-    let gameMoves = [];
-    let moveTimestamps = [];
-    let gameStartTime = null;
-    let rewardAmount = 0;
-    let colorBadge = document.getElementById('colorBadge');
-    let isProcessing = false;
-    let isResigning = false;
+    enPassantTarget = null;
+    lastMove = null;
+    return b;
+}
 
-    // ===== DOM =====
-    const boardEl = document.getElementById('chessBoard');
-    const statusText = document.getElementById('statusText');
-    const roomIdDisplay = document.getElementById('roomIdDisplay');
-    const playersDisplay = document.getElementById('playersDisplay');
-    const waitingOverlay = document.getElementById('waitingOverlay');
-    const modal = document.getElementById('gameOverModal');
-    const resultIcon = document.getElementById('resultIcon');
-    const modalTitle = document.getElementById('modalTitle');
-    const modalSub = document.getElementById('modalSub');
-    const modalCloseBtn = document.getElementById('modalCloseBtn');
-    const promotionModal = document.getElementById('promotionModal');
-    const promotionOptions = document.getElementById('promotionOptions');
+function cloneBoard(b) { return b.map(row => row.map(cell => cell ? {...cell} : null)); }
 
-    // ===== FUNGSI CATUR =====
-    function createEmptyBoard() {
-        const b = Array(8).fill().map(() => Array(8).fill(null));
-        const back = ['r','n','b','q','k','b','n','r'];
-        for (let c=0; c<8; c++) {
-            b[0][c] = { type: back[c], color: 'b' };
-            b[1][c] = { type: 'p', color: 'b' };
-            b[6][c] = { type: 'p', color: 'w' };
-            b[7][c] = { type: back[c], color: 'w' };
-        }
-        castling = {
-            w: { kingSide: true, queenSide: true },
-            b: { kingSide: true, queenSide: true }
-        };
-        enPassantTarget = null;
-        lastMove = null;
-        return b;
+function findKing(b, color) {
+    for (let r=0;r<8;r++) for (let c=0;c<8;c++) {
+        const p = b[r][c];
+        if (p && p.type==='k' && p.color===color) return {row:r,col:c};
     }
+    return null;
+}
 
-    function cloneBoard(b) { return b.map(row => row.map(cell => cell ? {...cell} : null)); }
-
-    function findKing(b, color) {
-        for (let r=0;r<8;r++) for (let c=0;c<8;c++) {
-            const p = b[r][c];
-            if (p && p.type==='k' && p.color===color) return {row:r,col:c};
-        }
-        return null;
+function isAttacked(b, row, col, byColor) {
+    for (let r=0;r<8;r++) for (let c=0;c<8;c++) {
+        const p = b[r][c];
+        if (!p || p.color!==byColor) continue;
+        const moves = rawMoves(b, r, c, true);
+        for (const m of moves) if (m.row===row && m.col===col) return true;
     }
+    return false;
+}
 
-    function isAttacked(b, row, col, byColor) {
-        for (let r=0;r<8;r++) for (let c=0;c<8;c++) {
-            const p = b[r][c];
-            if (!p || p.color!==byColor) continue;
-            const moves = rawMoves(b, r, c, true);
-            for (const m of moves) if (m.row===row && m.col===col) return true;
+function rawMoves(b, row, col, forAttack = false) {
+    const p = b[row][col];
+    if (!p) return [];
+    const {type, color} = p;
+    const enemy = color==='w'?'b':'w';
+    const moves = [];
+    const dir = color==='w'?-1:1;
+    const startRow = color==='w'?6:1;
+    const slide = (dr,dc) => {
+        let r=row+dr, c=col+dc;
+        while (r>=0&&r<8&&c>=0&&c<8) {
+            if (b[r][c]) { if (b[r][c].color!==color) moves.push({row:r,col:c}); break; }
+            moves.push({row:r,col:c});
+            r+=dr; c+=dc;
         }
-        return false;
-    }
-
-    function rawMoves(b, row, col, forAttack = false) {
-        const p = b[row][col];
-        if (!p) return [];
-        const {type, color} = p;
-        const enemy = color==='w'?'b':'w';
-        const moves = [];
-        const dir = color==='w'?-1:1;
-        const startRow = color==='w'?6:1;
-        const slide = (dr,dc) => {
-            let r=row+dr, c=col+dc;
-            while (r>=0&&r<8&&c>=0&&c<8) {
-                if (b[r][c]) { if (b[r][c].color!==color) moves.push({row:r,col:c}); break; }
-                moves.push({row:r,col:c});
-                r+=dr; c+=dc;
+    };
+    switch(type) {
+        case 'p': {
+            const r1 = row+dir;
+            if (r1>=0&&r1<8&&!b[r1][col]) {
+                moves.push({row:r1,col});
+                if (row===startRow && !b[row+2*dir][col]) moves.push({row:row+2*dir,col});
             }
-        };
-        switch(type) {
-            case 'p': {
-                const r1 = row+dir;
-                if (r1>=0&&r1<8&&!b[r1][col]) {
-                    moves.push({row:r1,col});
-                    if (row===startRow && !b[row+2*dir][col]) moves.push({row:row+2*dir,col});
-                }
-                for (const dc of [-1,1]) {
-                    const c2=col+dc;
-                    if (c2>=0&&c2<8&&r1>=0&&r1<8) {
-                        if (b[r1][c2] && b[r1][c2].color===enemy) moves.push({row:r1,col:c2});
-                        if (!forAttack && enPassantTarget && enPassantTarget.row === r1 && enPassantTarget.col === c2) {
-                            moves.push({row: r1, col: c2, enPassant: true});
-                        }
+            for (const dc of [-1,1]) {
+                const c2=col+dc;
+                if (c2>=0&&c2<8&&r1>=0&&r1<8) {
+                    if (b[r1][c2] && b[r1][c2].color===enemy) moves.push({row:r1,col:c2});
+                    if (!forAttack && enPassantTarget && enPassantTarget.row === r1 && enPassantTarget.col === c2) {
+                        moves.push({row: r1, col: c2, enPassant: true});
                     }
                 }
-                break;
             }
-            case 'n': {
-                const j=[[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
-                for (const [dr,dc] of j) { const r=row+dr,c=col+dc; if (r>=0&&r<8&&c>=0&&c<8&&(!b[r][c]||b[r][c].color!==color)) moves.push({row:r,col:c}); }
-                break;
+            break;
+        }
+        case 'n': {
+            const j=[[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+            for (const [dr,dc] of j) { const r=row+dr,c=col+dc; if (r>=0&&r<8&&c>=0&&c<8&&(!b[r][c]||b[r][c].color!==color)) moves.push({row:r,col:c}); }
+            break;
+        }
+        case 'b': slide(1,1); slide(1,-1); slide(-1,1); slide(-1,-1); break;
+        case 'r': slide(1,0); slide(-1,0); slide(0,1); slide(0,-1); break;
+        case 'q': slide(1,1); slide(1,-1); slide(-1,1); slide(-1,-1); slide(1,0); slide(-1,0); slide(0,1); slide(0,-1); break;
+        case 'k': {
+            for (let dr=-1;dr<=1;dr++) for (let dc=-1;dc<=1;dc++) {
+                if(dr===0&&dc===0) continue;
+                const r=row+dr,c=col+dc;
+                if(r>=0&&r<8&&c>=0&&c<8&&(!b[r][c]||b[r][c].color!==color)) moves.push({row:r,col:c});
             }
-            case 'b': slide(1,1); slide(1,-1); slide(-1,1); slide(-1,-1); break;
-            case 'r': slide(1,0); slide(-1,0); slide(0,1); slide(0,-1); break;
-            case 'q': slide(1,1); slide(1,-1); slide(-1,1); slide(-1,-1); slide(1,0); slide(-1,0); slide(0,1); slide(0,-1); break;
-            case 'k': {
-                for (let dr=-1;dr<=1;dr++) for (let dc=-1;dc<=1;dc++) {
-                    if(dr===0&&dc===0) continue;
-                    const r=row+dr,c=col+dc;
-                    if(r>=0&&r<8&&c>=0&&c<8&&(!b[r][c]||b[r][c].color!==color)) moves.push({row:r,col:c});
-                }
-                if (!forAttack && type === 'k') {
-                    const enemyColor = color === 'w' ? 'b' : 'w';
-                    const king = findKing(b, color);
-                    if (king && !isAttacked(b, king.row, king.col, enemyColor)) {
-                        const rookRow = color === 'w' ? 7 : 0;
-                        if (castling[color].kingSide) {
-                            if (!b[rookRow][5] && !b[rookRow][6] && 
-                                b[rookRow][7] && b[rookRow][7].type === 'r' && b[rookRow][7].color === color) {
-                                if (!isAttacked(b, rookRow, 5, enemyColor) && !isAttacked(b, rookRow, 6, enemyColor)) {
-                                    moves.push({row: rookRow, col: 6, castling: 'kingSide'});
-                                }
+            if (!forAttack && type === 'k') {
+                const enemyColor = color === 'w' ? 'b' : 'w';
+                const king = findKing(b, color);
+                if (king && !isAttacked(b, king.row, king.col, enemyColor)) {
+                    const rookRow = color === 'w' ? 7 : 0;
+                    if (castling[color].kingSide) {
+                        if (!b[rookRow][5] && !b[rookRow][6] && 
+                            b[rookRow][7] && b[rookRow][7].type === 'r' && b[rookRow][7].color === color) {
+                            if (!isAttacked(b, rookRow, 5, enemyColor) && !isAttacked(b, rookRow, 6, enemyColor)) {
+                                moves.push({row: rookRow, col: 6, castling: 'kingSide'});
                             }
                         }
-                        if (castling[color].queenSide) {
-                            if (!b[rookRow][1] && !b[rookRow][2] && !b[rookRow][3] &&
-                                b[rookRow][0] && b[rookRow][0].type === 'r' && b[rookRow][0].color === color) {
-                                if (!isAttacked(b, rookRow, 3, enemyColor) && !isAttacked(b, rookRow, 2, enemyColor)) {
-                                    moves.push({row: rookRow, col: 2, castling: 'queenSide'});
-                                }
+                    }
+                    if (castling[color].queenSide) {
+                        if (!b[rookRow][1] && !b[rookRow][2] && !b[rookRow][3] &&
+                            b[rookRow][0] && b[rookRow][0].type === 'r' && b[rookRow][0].color === color) {
+                            if (!isAttacked(b, rookRow, 3, enemyColor) && !isAttacked(b, rookRow, 2, enemyColor)) {
+                                moves.push({row: rookRow, col: 2, castling: 'queenSide'});
                             }
                         }
                     }
                 }
-                break;
             }
+            break;
         }
-        return moves;
     }
+    return moves;
+}
 
-    function legalMoves(b, row, col) {
-        const p = b[row][col];
-        if (!p) return [];
-        const raw = rawMoves(b, row, col);
-        const legal = [];
-        for (const mv of raw) {
-            const sim = cloneBoard(b);
-            if (mv.enPassant) {
-                const pawnRow = p.color === 'w' ? mv.row + 1 : mv.row - 1;
-                sim[pawnRow][mv.col] = null;
-                sim[mv.row][mv.col] = sim[row][col];
-                sim[row][col] = null;
-            } else if (mv.castling) {
-                const row2 = mv.row;
-                if (mv.castling === 'kingSide') {
-                    sim[row2][6] = sim[row2][4];
-                    sim[row2][4] = null;
-                    sim[row2][5] = sim[row2][7];
-                    sim[row2][7] = null;
-                } else {
-                    sim[row2][2] = sim[row2][4];
-                    sim[row2][4] = null;
-                    sim[row2][3] = sim[row2][0];
-                    sim[row2][0] = null;
-                }
+function legalMoves(b, row, col) {
+    const p = b[row][col];
+    if (!p) return [];
+    const raw = rawMoves(b, row, col);
+    const legal = [];
+    for (const mv of raw) {
+        const sim = cloneBoard(b);
+        if (mv.enPassant) {
+            const pawnRow = p.color === 'w' ? mv.row + 1 : mv.row - 1;
+            sim[pawnRow][mv.col] = null;
+            sim[mv.row][mv.col] = sim[row][col];
+            sim[row][col] = null;
+        } else if (mv.castling) {
+            const row2 = mv.row;
+            if (mv.castling === 'kingSide') {
+                sim[row2][6] = sim[row2][4];
+                sim[row2][4] = null;
+                sim[row2][5] = sim[row2][7];
+                sim[row2][7] = null;
             } else {
-                sim[mv.row][mv.col] = sim[row][col];
-                sim[row][col] = null;
-            }
-            const king = findKing(sim, p.color);
-            if (!king) continue;
-            if (!isAttacked(sim, king.row, king.col, p.color==='w'?'b':'w')) {
-                legal.push(mv);
-            }
-        }
-        return legal;
-    }
-
-    function hasLegal(b, color) {
-        for (let r=0;r<8;r++) for (let c=0;c<8;c++) {
-            const p = b[r][c];
-            if (p && p.color===color && legalMoves(b, r, c).length>0) return true;
-        }
-        return false;
-    }
-
-    function gameStatus(b, color) {
-        const king = findKing(b, color);
-        if (!king) return 'checkmate';
-        const inCheck = isAttacked(b, king.row, king.col, color==='w'?'b':'w');
-        const has = hasLegal(b, color);
-        if (!has) return inCheck ? 'checkmate' : 'stalemate';
-        if (inCheck) return 'check';
-        return 'playing';
-    }
-
-    function makeMove(b, fr, fc, tr, tc, moveData = null) {
-        const p = b[fr][fc];
-        if (!p) return {success: false};
-        
-        if (moveData && moveData.enPassant) {
-            const pawnRow = p.color === 'w' ? tr + 1 : tr - 1;
-            b[pawnRow][tc] = null;
-            b[tr][tc] = p;
-            b[fr][fc] = null;
-        } else if (moveData && moveData.castling) {
-            const row = fr;
-            if (moveData.castling === 'kingSide') {
-                b[row][6] = b[row][4];
-                b[row][4] = null;
-                b[row][5] = b[row][7];
-                b[row][7] = null;
-                castling[p.color].kingSide = false;
-                castling[p.color].queenSide = false;
-                return {success: true, captured: null, castling: 'kingSide'};
-            } else {
-                b[row][2] = b[row][4];
-                b[row][4] = null;
-                b[row][3] = b[row][0];
-                b[row][0] = null;
-                castling[p.color].kingSide = false;
-                castling[p.color].queenSide = false;
-                return {success: true, captured: null, castling: 'queenSide'};
+                sim[row2][2] = sim[row2][4];
+                sim[row2][4] = null;
+                sim[row2][3] = sim[row2][0];
+                sim[row2][0] = null;
             }
         } else {
-            b[tr][tc] = p;
-            b[fr][fc] = null;
+            sim[mv.row][mv.col] = sim[row][col];
+            sim[row][col] = null;
         }
+        const king = findKing(sim, p.color);
+        if (!king) continue;
+        if (!isAttacked(sim, king.row, king.col, p.color==='w'?'b':'w')) {
+            legal.push(mv);
+        }
+    }
+    return legal;
+}
 
-        if (p.type === 'k') {
+function hasLegal(b, color) {
+    for (let r=0;r<8;r++) for (let c=0;c<8;c++) {
+        const p = b[r][c];
+        if (p && p.color===color && legalMoves(b, r, c).length>0) return true;
+    }
+    return false;
+}
+
+function gameStatus(b, color) {
+    const king = findKing(b, color);
+    if (!king) return 'checkmate';
+    const inCheck = isAttacked(b, king.row, king.col, color==='w'?'b':'w');
+    const has = hasLegal(b, color);
+    if (!has) return inCheck ? 'checkmate' : 'stalemate';
+    if (inCheck) return 'check';
+    return 'playing';
+}
+
+function makeMove(b, fr, fc, tr, tc, moveData = null) {
+    const p = b[fr][fc];
+    if (!p) return {success: false};
+    
+    if (moveData && moveData.enPassant) {
+        const pawnRow = p.color === 'w' ? tr + 1 : tr - 1;
+        b[pawnRow][tc] = null;
+        b[tr][tc] = p;
+        b[fr][fc] = null;
+    } else if (moveData && moveData.castling) {
+        const row = fr;
+        if (moveData.castling === 'kingSide') {
+            b[row][6] = b[row][4];
+            b[row][4] = null;
+            b[row][5] = b[row][7];
+            b[row][7] = null;
             castling[p.color].kingSide = false;
             castling[p.color].queenSide = false;
-        }
-        if (p.type === 'r') {
-            if (fr === 0 && fc === 0) castling['b'].queenSide = false;
-            if (fr === 0 && fc === 7) castling['b'].kingSide = false;
-            if (fr === 7 && fc === 0) castling['w'].queenSide = false;
-            if (fr === 7 && fc === 7) castling['w'].kingSide = false;
-        }
-        if (tr === 0 && tc === 0) castling['b'].queenSide = false;
-        if (tr === 0 && tc === 7) castling['b'].kingSide = false;
-        if (tr === 7 && tc === 0) castling['w'].queenSide = false;
-        if (tr === 7 && tc === 7) castling['w'].kingSide = false;
-
-        enPassantTarget = null;
-        if (p.type === 'p' && Math.abs(tr - fr) === 2) {
-            enPassantTarget = { row: (fr + tr) / 2, col: fc };
-        }
-
-        if (p.type === 'p' && (tr === 0 || tr === 7)) {
-            return {success: true, promotion: true};
-        }
-
-        return {success: true, promotion: false};
-    }
-
-    // ===== PROMOSI =====
-    function showPromotionModal(color, row, col) {
-        pendingPromotion = { color, row, col };
-        promotionModal.classList.add('show');
-    }
-
-    promotionOptions.addEventListener('click', (e) => {
-        const btn = e.target.closest('.promotion-btn');
-        if (!btn) return;
-        const piece = btn.dataset.piece;
-        if (pendingPromotion) {
-            const { color, row, col } = pendingPromotion;
-            board[row][col] = { type: piece, color: color };
-            pendingPromotion = null;
-            promotionModal.classList.remove('show');
-            renderBoard();
-            updateStatus();
-            saveGameState();
-            
-            const st = gameStatus(board, currentTurn);
-            if (st === 'checkmate' || st === 'stalemate') {
-                gameOver = true;
-                gameActive = false;
-                const winner = st === 'checkmate' ? (currentTurn === 'w' ? 'Hitam' : 'Putih') : null;
-                const isWinner = (winner === 'Putih' && userColor === 'w') || (winner === 'Hitam' && userColor === 'b');
-                handleGameEnd(isWinner, st === 'stalemate');
-                return;
-            }
-        }
-    });
-
-    // ===== RENDER =====
-    function renderBoard() {
-        boardEl.innerHTML = '';
-        const isMyTurn = currentTurn === userColor && gameActive && !gameOver;
-        
-        const shouldFlip = userColor === 'b';
-        const rows = shouldFlip ? [7,6,5,4,3,2,1,0] : [0,1,2,3,4,5,6,7];
-        
-        for (let ri = 0; ri < 8; ri++) {
-            const r = rows[ri];
-            for (let ci = 0; ci < 8; ci++) {
-                const c = shouldFlip ? 7 - ci : ci;
-                const sq = document.createElement('div');
-                const light = (r + c) % 2 === 0;
-                sq.className = `square ${light ? 'light' : 'dark'}`;
-                
-                if (lastMove) {
-                    if ((lastMove.from.row === r && lastMove.from.col === c) ||
-                        (lastMove.to.row === r && lastMove.to.col === c)) {
-                        sq.classList.add('last-move');
-                    }
-                }
-                
-                const piece = board[r]?.[c];
-                if (piece) {
-                    const u = {'w':{'k':'♔','q':'♕','r':'♖','b':'♗','n':'♘','p':'♙'}, 'b':{'k':'♚','q':'♛','r':'♜','b':'♝','n':'♞','p':'♟'}};
-                    sq.textContent = u[piece.color][piece.type] || '';
-                }
-                
-                if (selectedSquare && selectedSquare.row === r && selectedSquare.col === c) {
-                    sq.classList.add('selected');
-                }
-                
-                const isLegal = legalMovesForSelected.some(m => m.row === r && m.col === c);
-                if (isLegal) {
-                    const isEnPassant = legalMovesForSelected.some(m => m.row === r && m.col === c && m.enPassant);
-                    if (isEnPassant) {
-                        sq.classList.add('legal-move', 'en-passant');
-                    } else {
-                        sq.classList.add('legal-move');
-                    }
-                }
-                
-                if (!isMyTurn && gameActive) sq.classList.add('waiting');
-                
-                sq.dataset.row = r;
-                sq.dataset.col = c;
-                sq.addEventListener('click', () => onSquareClick(r, c));
-                boardEl.appendChild(sq);
-            }
-        }
-    }
-
-    function updateStatus() {
-        if (gameOver) return;
-        if (!gameActive) {
-            statusText.textContent = '⏳ Menunggu pemain...';
-            return;
-        }
-        const st = gameStatus(board, currentTurn);
-        if (st === 'check') {
-            statusText.textContent = `⚠️ Cek! (${currentTurn === 'w' ? 'Putih' : 'Hitam'})`;
+            return {success: true, captured: null, castling: 'kingSide'};
         } else {
-            const turn = currentTurn === 'w' ? 'Putih' : 'Hitam';
-            const isYou = currentTurn === userColor;
-            statusText.textContent = `Giliran ${turn} ${isYou ? '(Anda)' : `(${opponentName})`}`;
+            b[row][2] = b[row][4];
+            b[row][4] = null;
+            b[row][3] = b[row][0];
+            b[row][0] = null;
+            castling[p.color].kingSide = false;
+            castling[p.color].queenSide = false;
+            return {success: true, captured: null, castling: 'queenSide'};
         }
+    } else {
+        b[tr][tc] = p;
+        b[fr][fc] = null;
     }
 
-    // ===== KLIK KOTAK =====
-    function onSquareClick(row, col) {
-        if (!gameActive || gameOver || currentTurn !== userColor) {
-            if (currentTurn !== userColor && gameActive) {
-                statusText.textContent = '⏳ Tunggu giliran lawan...';
+    if (p.type === 'k') {
+        castling[p.color].kingSide = false;
+        castling[p.color].queenSide = false;
+    }
+    if (p.type === 'r') {
+        if (fr === 0 && fc === 0) castling['b'].queenSide = false;
+        if (fr === 0 && fc === 7) castling['b'].kingSide = false;
+        if (fr === 7 && fc === 0) castling['w'].queenSide = false;
+        if (fr === 7 && fc === 7) castling['w'].kingSide = false;
+    }
+    if (tr === 0 && tc === 0) castling['b'].queenSide = false;
+    if (tr === 0 && tc === 7) castling['b'].kingSide = false;
+    if (tr === 7 && tc === 0) castling['w'].queenSide = false;
+    if (tr === 7 && tc === 7) castling['w'].kingSide = false;
+
+    enPassantTarget = null;
+    if (p.type === 'p' && Math.abs(tr - fr) === 2) {
+        enPassantTarget = { row: (fr + tr) / 2, col: fc };
+    }
+
+    if (p.type === 'p' && (tr === 0 || tr === 7)) {
+        return {success: true, promotion: true};
+    }
+
+    return {success: true, promotion: false};
+}
+
+// ===== PROMOSI =====
+function showPromotionModal(color, row, col) {
+    pendingPromotion = { color, row, col };
+    promotionModal.classList.add('show');
+}
+
+promotionOptions.addEventListener('click', (e) => {
+    const btn = e.target.closest('.promotion-btn');
+    if (!btn) return;
+    const piece = btn.dataset.piece;
+    if (pendingPromotion) {
+        const { color, row, col } = pendingPromotion;
+        board[row][col] = { type: piece, color: color };
+        pendingPromotion = null;
+        promotionModal.classList.remove('show');
+        renderBoard();
+        updateStatus();
+        saveGameState();
+        
+        const st = gameStatus(board, currentTurn);
+        if (st === 'checkmate' || st === 'stalemate') {
+            gameOver = true;
+            gameActive = false;
+            const winner = st === 'checkmate' ? (currentTurn === 'w' ? 'Hitam' : 'Putih') : null;
+            const isWinner = (winner === 'Putih' && userColor === 'w') || (winner === 'Hitam' && userColor === 'b');
+            handleGameEnd(isWinner, st === 'stalemate');
+            return;
+        }
+    }
+});
+
+// ===== RENDER =====
+function renderBoard() {
+    boardEl.innerHTML = '';
+    const isMyTurn = currentTurn === userColor && gameActive && !gameOver;
+    
+    const shouldFlip = userColor === 'b';
+    const rows = shouldFlip ? [7,6,5,4,3,2,1,0] : [0,1,2,3,4,5,6,7];
+    
+    for (let ri = 0; ri < 8; ri++) {
+        const r = rows[ri];
+        for (let ci = 0; ci < 8; ci++) {
+            const c = shouldFlip ? 7 - ci : ci;
+            const sq = document.createElement('div');
+            const light = (r + c) % 2 === 0;
+            sq.className = `square ${light ? 'light' : 'dark'}`;
+            
+            if (lastMove) {
+                if ((lastMove.from.row === r && lastMove.from.col === c) ||
+                    (lastMove.to.row === r && lastMove.to.col === c)) {
+                    sq.classList.add('last-move');
+                }
             }
-            return;
-        }
-
-        const piece = board[row][col];
-        if (piece && piece.color === userColor) {
-            const moves = legalMoves(board, row, col);
-            if (moves.length === 0) { selectedSquare = null; legalMovesForSelected = []; renderBoard(); return; }
-            selectedSquare = { row, col };
-            legalMovesForSelected = moves;
-            renderBoard();
-            return;
-        }
-
-        if (selectedSquare) {
-            const isLegal = legalMovesForSelected.some(m => m.row === row && m.col === col);
+            
+            const piece = board[r]?.[c];
+            if (piece) {
+                const u = {'w':{'k':'♔','q':'♕','r':'♖','b':'♗','n':'♘','p':'♙'}, 'b':{'k':'♚','q':'♛','r':'♜','b':'♝','n':'♞','p':'♟'}};
+                sq.textContent = u[piece.color][piece.type] || '';
+            }
+            
+            if (selectedSquare && selectedSquare.row === r && selectedSquare.col === c) {
+                sq.classList.add('selected');
+            }
+            
+            const isLegal = legalMovesForSelected.some(m => m.row === r && m.col === c);
             if (isLegal) {
-                const { row: fr, col: fc } = selectedSquare;
-                const move = legalMovesForSelected.find(m => m.row === row && m.col === col);
-                const moveData = {
-                    castling: move ? move.castling || null : null,
-                    enPassant: move ? move.enPassant || false : false
-                };
-                
-                moveTimestamps.push(Date.now());
-                const moveStr = `${String.fromCharCode(97+fc)}${8-fr} → ${String.fromCharCode(97+col)}${8-row}`;
-                gameMoves.push({ from: {row: fr, col: fc}, to: {row: row, col: col}, color: userColor, move: moveStr });
-                
-                lastMove = { from: {row: fr, col: fc}, to: {row: row, col: col} };
-                const result = makeMove(board, fr, fc, row, col, moveData);
-                
-                if (result.success) {
-                    if (result.promotion) {
-                        showPromotionModal(userColor, row, col);
-                        selectedSquare = null;
-                        legalMovesForSelected = [];
-                        renderBoard();
-                        return;
-                    }
-                    
-                    currentTurn = currentTurn === 'w' ? 'b' : 'w';
+                const isEnPassant = legalMovesForSelected.some(m => m.row === r && m.col === c && m.enPassant);
+                if (isEnPassant) {
+                    sq.classList.add('legal-move', 'en-passant');
+                } else {
+                    sq.classList.add('legal-move');
+                }
+            }
+            
+            if (!isMyTurn && gameActive) sq.classList.add('waiting');
+            
+            sq.dataset.row = r;
+            sq.dataset.col = c;
+            sq.addEventListener('click', () => onSquareClick(r, c));
+            boardEl.appendChild(sq);
+        }
+    }
+}
+
+function updateStatus() {
+    if (gameOver) return;
+    if (!gameActive) {
+        statusText.textContent = '⏳ Menunggu pemain...';
+        return;
+    }
+    const st = gameStatus(board, currentTurn);
+    if (st === 'check') {
+        statusText.textContent = `⚠️ Cek! (${currentTurn === 'w' ? 'Putih' : 'Hitam'})`;
+    } else {
+        const turn = currentTurn === 'w' ? 'Putih' : 'Hitam';
+        const isYou = currentTurn === userColor;
+        statusText.textContent = `Giliran ${turn} ${isYou ? '(Anda)' : `(${opponentName})`}`;
+    }
+}
+
+// ===== KLIK KOTAK =====
+function onSquareClick(row, col) {
+    if (!gameActive || gameOver || currentTurn !== userColor) {
+        if (currentTurn !== userColor && gameActive) {
+            statusText.textContent = '⏳ Tunggu giliran lawan...';
+        }
+        return;
+    }
+
+    const piece = board[row][col];
+    if (piece && piece.color === userColor) {
+        const moves = legalMoves(board, row, col);
+        if (moves.length === 0) { selectedSquare = null; legalMovesForSelected = []; renderBoard(); return; }
+        selectedSquare = { row, col };
+        legalMovesForSelected = moves;
+        renderBoard();
+        return;
+    }
+
+    if (selectedSquare) {
+        const isLegal = legalMovesForSelected.some(m => m.row === row && m.col === col);
+        if (isLegal) {
+            const { row: fr, col: fc } = selectedSquare;
+            const move = legalMovesForSelected.find(m => m.row === row && m.col === col);
+            const moveData = {
+                castling: move ? move.castling || null : null,
+                enPassant: move ? move.enPassant || false : false
+            };
+            
+            moveTimestamps.push(Date.now());
+            const moveStr = `${String.fromCharCode(97+fc)}${8-fr} → ${String.fromCharCode(97+col)}${8-row}`;
+            gameMoves.push({ from: {row: fr, col: fc}, to: {row: row, col: col}, color: userColor, move: moveStr });
+            
+            lastMove = { from: {row: fr, col: fc}, to: {row: row, col: col} };
+            const result = makeMove(board, fr, fc, row, col, moveData);
+            
+            if (result.success) {
+                if (result.promotion) {
+                    showPromotionModal(userColor, row, col);
                     selectedSquare = null;
                     legalMovesForSelected = [];
                     renderBoard();
-                    updateStatus();
-                    saveGameState();
-                    
-                    const st = gameStatus(board, currentTurn);
-                    if (st === 'checkmate' || st === 'stalemate') {
-                        gameOver = true;
-                        gameActive = false;
-                        const winner = st === 'checkmate' ? (currentTurn === 'w' ? 'Hitam' : 'Putih') : null;
-                        const isWinner = (winner === 'Putih' && userColor === 'w') || (winner === 'Hitam' && userColor === 'b');
-                        handleGameEnd(isWinner, st === 'stalemate');
-                        return;
-                    }
-                    saveGameState();
+                    return;
                 }
-            } else {
+                
+                currentTurn = currentTurn === 'w' ? 'b' : 'w';
                 selectedSquare = null;
                 legalMovesForSelected = [];
                 renderBoard();
-            }
-        }
-    }
-
-    // ===== SAVE GAME STATE =====
-    async function saveGameState() {
-        try {
-            const data = await getData();
-            const room = data.rooms?.find(r => r.roomId === roomId);
-            if (room) {
-                room.board = board;
-                room.currentTurn = currentTurn;
-                room.castling = castling;
-                room.enPassantTarget = enPassantTarget;
-                room.lastMove = lastMove;
-                room.gameMoves = gameMoves;
-                room.moveTimestamps = moveTimestamps;
-                if (gameOver) room.status = 'finished';
-                await updateData(data);
-            }
-        } catch (error) {
-            console.error('Error saving game state:', error);
-        }
-    }
-
-    // ===== LOAD GAME STATE =====
-    async function loadGameState() {
-        try {
-            const data = await getData();
-            const room = data.rooms?.find(r => r.roomId === roomId);
-            if (!room) {
-                localStorage.removeItem('online_room');
-                window.location.href = 'dashboard.html';
-                return;
-            }
-
-            const user = getUserSession();
-            if (!user) {
-                window.location.href = 'index.html';
-                return;
-            }
-
-            const host = data.users.find(u => u.userId === room.hostId);
-            const player2 = room.player2Id ? data.users.find(u => u.userId === room.player2Id) : null;
-
-            let hostName = host ? host.username : room.hostName;
-            let player2Name = player2 ? player2.username : room.player2Name;
-            let hostElo = host ? host.elo : 100;
-            let player2Elo = player2 ? player2.elo : 100;
-
-            if (player2) {
-                opponentName = user.userId === room.hostId ? player2Name : hostName;
-                opponentElo = user.userId === room.hostId ? player2Elo : hostElo;
-                opponentId = user.userId === room.hostId ? room.player2Id : room.hostId;
-                myElo = user.userId === room.hostId ? hostElo : player2Elo;
-                waitingOverlay.style.display = 'none';
-                gameActive = true;
-                playersDisplay.innerHTML = `
-                    <span class="you">🧑 ${hostName}</span> vs 
-                    <span class="opponent">👤 ${player2Name}</span>
-                `;
-                roomIdDisplay.textContent = `🏠 Room: ${roomId}`;
-            } else {
-                waitingOverlay.style.display = 'flex';
-                gameActive = false;
-                playersDisplay.innerHTML = `
-                    <span class="you">🧑 ${hostName}</span> vs 
-                    <span class="opponent">👤 Menunggu...</span>
-                `;
-                roomIdDisplay.textContent = `🏠 Room: ${roomId}`;
-                return;
-            }
-
-            if (room.board) {
-                board = room.board;
-            } else {
-                board = createEmptyBoard();
-                room.board = board;
-                await updateData(data);
-            }
-
-            currentTurn = room.currentTurn || 'w';
-            castling = room.castling || { w: { kingSide: true, queenSide: true }, b: { kingSide: true, queenSide: true } };
-            enPassantTarget = room.enPassantTarget || null;
-            lastMove = room.lastMove || null;
-            gameMoves = room.gameMoves || [];
-            moveTimestamps = room.moveTimestamps || [];
-            
-            gameActive = room.status !== 'finished';
-            gameOver = room.status === 'finished';
-
-            userColor = user.userId === room.hostId ? 'w' : 'b';
-            myName = user.username;
-            
-            if (userColor === 'w') {
-                colorBadge.textContent = '⚪ Putih';
-                colorBadge.className = 'color-badge white';
-            } else {
-                colorBadge.textContent = '⚫ Hitam';
-                colorBadge.className = 'color-badge black';
-            }
-
-            renderBoard();
-            updateStatus();
-
-            if (gameOver) {
+                updateStatus();
+                saveGameState();
+                
                 const st = gameStatus(board, currentTurn);
-                const isWinner = (st === 'checkmate' && currentTurn !== userColor);
-                const isStalemate = st === 'stalemate';
-                handleGameEnd(isWinner, isStalemate, true);
+                if (st === 'checkmate' || st === 'stalemate') {
+                    gameOver = true;
+                    gameActive = false;
+                    const winner = st === 'checkmate' ? (currentTurn === 'w' ? 'Hitam' : 'Putih') : null;
+                    const isWinner = (winner === 'Putih' && userColor === 'w') || (winner === 'Hitam' && userColor === 'b');
+                    handleGameEnd(isWinner, st === 'stalemate');
+                    return;
+                }
+                saveGameState();
             }
-
-        } catch (error) {
-            console.error('Error loading game state:', error);
+        } else {
+            selectedSquare = null;
+            legalMovesForSelected = [];
+            renderBoard();
         }
     }
+}
 
-    // ===== ANALISIS =====
-    function analyzeGame(winner) {
-        const totalMoves = gameMoves.length;
-        if (totalMoves === 0) {
-            return { accuracy: 0, rating: 'Pemula', goodMoves: 0, blunders: 0, avgSpeed: 0 };
+// ===== SAVE GAME STATE =====
+async function saveGameState() {
+    try {
+        const data = await getData();
+        const room = data.rooms?.find(r => r.roomId === roomId);
+        if (room) {
+            room.board = board;
+            room.currentTurn = currentTurn;
+            room.castling = castling;
+            room.enPassantTarget = enPassantTarget;
+            room.lastMove = lastMove;
+            room.gameMoves = gameMoves;
+            room.moveTimestamps = moveTimestamps;
+            if (gameOver) room.status = 'finished';
+            await updateData(data);
         }
-
-        let goodMoves = 0;
-        let blunders = 0;
-        
-        gameMoves.forEach((move) => {
-            if (move.move && move.move.includes('promosi')) {
-                goodMoves += 2;
-            }
-            const targetPiece = board[move.to.row]?.[move.to.col];
-            if (targetPiece) {
-                goodMoves += 1;
-            }
-        });
-
-        blunders = Math.max(0, Math.floor(totalMoves * 0.1) - Math.floor(goodMoves * 0.05));
-        const accuracy = Math.min(95, Math.round((goodMoves / Math.max(1, totalMoves)) * 50 + 30));
-
-        let rating = 'Pemula';
-        if (accuracy >= 85) rating = 'Grandmaster ⭐';
-        else if (accuracy >= 70) rating = 'Master 🏆';
-        else if (accuracy >= 55) rating = 'Ahli 💪';
-        else if (accuracy >= 40) rating = 'Menengah 📈';
-        else rating = 'Pemula 🌱';
-
-        let avgSpeed = 0;
-        if (moveTimestamps.length > 1) {
-            let totalTime = 0;
-            for (let i = 1; i < moveTimestamps.length; i++) {
-                totalTime += (moveTimestamps[i] - moveTimestamps[i-1]) / 1000;
-            }
-            avgSpeed = totalTime / (moveTimestamps.length - 1);
-        }
-
-        if (winner === 'user') {
-            return { 
-                accuracy: Math.min(98, accuracy + 10), 
-                rating: rating + ' 🎯', 
-                goodMoves: goodMoves + 2, 
-                blunders: Math.max(0, blunders - 1),
-                avgSpeed: avgSpeed
-            };
-        } else if (winner === 'opponent') {
-            return { 
-                accuracy: Math.max(10, accuracy - 15), 
-                rating: rating, 
-                goodMoves: Math.max(0, goodMoves - 1), 
-                blunders: blunders + 2,
-                avgSpeed: avgSpeed
-            };
-        }
-        return { accuracy, rating, goodMoves, blunders, avgSpeed };
+    } catch (error) {
+        console.error('Error saving game state:', error);
     }
+}
 
-    // ===== HANDLE GAME END =====
-    async function handleGameEnd(isWinner, isStalemate, fromLoad = false) {
-        if (gameOver && fromLoad) {
-            showAnalysisModal(isWinner, isStalemate, analyzeGame(isWinner ? 'user' : 'opponent'));
+// ===== LOAD GAME STATE =====
+async function loadGameState() {
+    try {
+        const data = await getData();
+        const room = data.rooms?.find(r => r.roomId === roomId);
+        if (!room) {
+            localStorage.removeItem('online_room');
+            window.location.href = 'dashboard.html';
             return;
         }
+
+        const user = getUserSession();
+        if (!user) {
+            window.location.href = 'index.html';
+            return;
+        }
+
+        const host = data.users.find(u => u.userId === room.hostId);
+        const player2 = room.player2Id ? data.users.find(u => u.userId === room.player2Id) : null;
+
+        let hostName = host ? host.username : room.hostName;
+        let player2Name = player2 ? player2.username : room.player2Name;
+        let hostElo = host ? host.elo : 100;
+        let player2Elo = player2 ? player2.elo : 100;
+
+        if (player2) {
+            opponentName = user.userId === room.hostId ? player2Name : hostName;
+            opponentElo = user.userId === room.hostId ? player2Elo : hostElo;
+            opponentId = user.userId === room.hostId ? room.player2Id : room.hostId;
+            myElo = user.userId === room.hostId ? hostElo : player2Elo;
+            waitingOverlay.style.display = 'none';
+            gameActive = true;
+            playersDisplay.innerHTML = `
+                <span class="you">🧑 ${hostName}</span> vs 
+                <span class="opponent">👤 ${player2Name}</span>
+            `;
+            roomIdDisplay.textContent = `🏠 Room: ${roomId}`;
+        } else {
+            waitingOverlay.style.display = 'flex';
+            gameActive = false;
+            playersDisplay.innerHTML = `
+                <span class="you">🧑 ${hostName}</span> vs 
+                <span class="opponent">👤 Menunggu...</span>
+            `;
+            roomIdDisplay.textContent = `🏠 Room: ${roomId}`;
+            return;
+        }
+
+        if (room.board) {
+            board = room.board;
+        } else {
+            board = createEmptyBoard();
+            room.board = board;
+            await updateData(data);
+        }
+
+        currentTurn = room.currentTurn || 'w';
+        castling = room.castling || { w: { kingSide: true, queenSide: true }, b: { kingSide: true, queenSide: true } };
+        enPassantTarget = room.enPassantTarget || null;
+        lastMove = room.lastMove || null;
+        gameMoves = room.gameMoves || [];
+        moveTimestamps = room.moveTimestamps || [];
         
-        gameOver = true;
-        gameActive = false;
-        if (refreshInterval) clearInterval(refreshInterval);
+        gameActive = room.status !== 'finished';
+        gameOver = room.status === 'finished';
+
+        userColor = user.userId === room.hostId ? 'w' : 'b';
+        myName = user.username;
         
-        const analysis = analyzeGame(isWinner ? 'user' : 'opponent');
-        
-        let reward = 0;
-        let penalty = 0;
-        
-        if (!isStalemate) {
+        if (userColor === 'w') {
+            colorBadge.textContent = '⚪ Putih';
+            colorBadge.className = 'color-badge white';
+        } else {
+            colorBadge.textContent = '⚫ Hitam';
+            colorBadge.className = 'color-badge black';
+        }
+
+        renderBoard();
+        updateStatus();
+
+        if (gameOver) {
+            const st = gameStatus(board, currentTurn);
+            const isWinner = (st === 'checkmate' && currentTurn !== userColor);
+            const isStalemate = st === 'stalemate';
+            handleGameEnd(isWinner, isStalemate, true);
+        }
+
+    } catch (error) {
+        console.error('Error loading game state:', error);
+    }
+}
+
+// ===== ANALISIS =====
+function analyzeGame(winner) {
+    const totalMoves = gameMoves.length;
+    if (totalMoves === 0) {
+        return { accuracy: 0, rating: 'Pemula', goodMoves: 0, blunders: 0, avgSpeed: 0 };
+    }
+
+    let goodMoves = 0;
+    let blunders = 0;
+    
+    gameMoves.forEach((move) => {
+        if (move.move && move.move.includes('promosi')) {
+            goodMoves += 2;
+        }
+        const targetPiece = board[move.to.row]?.[move.to.col];
+        if (targetPiece) {
+            goodMoves += 1;
+        }
+    });
+
+    blunders = Math.max(0, Math.floor(totalMoves * 0.1) - Math.floor(goodMoves * 0.05));
+    const accuracy = Math.min(95, Math.round((goodMoves / Math.max(1, totalMoves)) * 50 + 30));
+
+    let rating = 'Pemula';
+    if (accuracy >= 85) rating = 'Grandmaster ⭐';
+    else if (accuracy >= 70) rating = 'Master 🏆';
+    else if (accuracy >= 55) rating = 'Ahli 💪';
+    else if (accuracy >= 40) rating = 'Menengah 📈';
+    else rating = 'Pemula 🌱';
+
+    let avgSpeed = 0;
+    if (moveTimestamps.length > 1) {
+        let totalTime = 0;
+        for (let i = 1; i < moveTimestamps.length; i++) {
+            totalTime += (moveTimestamps[i] - moveTimestamps[i-1]) / 1000;
+        }
+        avgSpeed = totalTime / (moveTimestamps.length - 1);
+    }
+
+    if (winner === 'user') {
+        return { 
+            accuracy: Math.min(98, accuracy + 10), 
+            rating: rating + ' 🎯', 
+            goodMoves: goodMoves + 2, 
+            blunders: Math.max(0, blunders - 1),
+            avgSpeed: avgSpeed
+        };
+    } else if (winner === 'opponent') {
+        return { 
+            accuracy: Math.max(10, accuracy - 15), 
+            rating: rating, 
+            goodMoves: Math.max(0, goodMoves - 1), 
+            blunders: blunders + 2,
+            avgSpeed: avgSpeed
+        };
+    }
+    return { accuracy, rating, goodMoves, blunders, avgSpeed };
+}
+
+// ===== HANDLE GAME END =====
+async function handleGameEnd(isWinner, isStalemate, fromLoad = false) {
+    if (isRedirecting) return; // Cegah multiple execution
+    
+    if (gameOver && fromLoad) {
+        showAnalysisModal(isWinner, isStalemate, analyzeGame(isWinner ? 'user' : 'opponent'));
+        return;
+    }
+    
+    gameOver = true;
+    gameActive = false;
+    if (refreshInterval) clearInterval(refreshInterval);
+    
+    const analysis = analyzeGame(isWinner ? 'user' : 'opponent');
+    
+    let reward = 0;
+    let penalty = 0;
+    
+    if (!isStalemate) {
+        try {
             const user = getUserSession();
             if (user) {
                 const data = await getData();
@@ -1158,273 +1176,376 @@
                     }));
                 }
             }
-        } else {
-            rewardAmount = 0;
-        }
-        
-        if (!fromLoad) {
-            await saveGameState();
-            await deleteRoom();
-        }
-        
-        showAnalysisModal(isWinner, isStalemate, analysis);
-    }
-
-    // ===== DELETE ROOM =====
-    async function deleteRoom() {
-        try {
-            const data = await getData();
-            if (!data.rooms) return;
-            
-            const roomIndex = data.rooms.findIndex(r => r.roomId === roomId);
-            if (roomIndex !== -1) {
-                data.rooms.splice(roomIndex, 1);
-                
-                // Hapus challenges yang terkait
-                if (data.users) {
-                    data.users.forEach(user => {
-                        if (user.challenges) {
-                            user.challenges = user.challenges.filter(c => c.roomId !== roomId);
-                        }
-                    });
-                }
-                
-                await updateData(data);
-                console.log('✅ Room deleted:', roomId);
-            }
         } catch (error) {
-            console.error('Error deleting room:', error);
+            console.error('Error updating stats:', error);
         }
+    } else {
+        rewardAmount = 0;
     }
-
-    // ===== SHOW ANALYSIS MODAL =====
-    function showAnalysisModal(isWinner, isStalemate, analysis) {
-        const rewardText = rewardAmount > 0 ? `+${rewardAmount} ELO` : 
-                          rewardAmount < 0 ? `${rewardAmount} ELO` : '0 ELO';
-        
-        if (isStalemate) {
-            resultIcon.textContent = '⚖️';
-            modalTitle.textContent = '🤝 Stalemate! Seri';
-            modalSub.textContent = 'Permainan berakhir imbang.';
-        } else if (isWinner) {
-            resultIcon.textContent = '🏆';
-            modalTitle.textContent = '🎉 Anda Menang!';
-            modalSub.textContent = `${rewardText}! Pertandingan brilian!`;
-        } else {
-            resultIcon.textContent = '💀';
-            modalTitle.textContent = '💀 Anda Kalah';
-            modalSub.textContent = `${rewardText}. Coba lagi!`;
-        }
-        
-        document.getElementById('accuracy').textContent = (analysis.accuracy || 0) + '%';
-        document.getElementById('gameRating').textContent = analysis.rating || 'Pemula';
-        document.getElementById('goodMoves').textContent = analysis.goodMoves || 0;
-        document.getElementById('blunders').textContent = analysis.blunders || 0;
-        document.getElementById('gameSpeed').textContent = analysis.avgSpeed ? analysis.avgSpeed.toFixed(1) + 's' : '--';
-        document.getElementById('eloReward').textContent = rewardText;
-        
-        const historyModal = document.getElementById('moveHistoryModal');
-        historyModal.innerHTML = '';
-        let moveNum = 1;
-        let html = '';
-        for (let i = 0; i < gameMoves.length; i += 2) {
-            const white = gameMoves[i];
-            const black = gameMoves[i+1];
-            html += `<div>`;
-            html += `<span class="move-num">${moveNum}.</span>`;
-            html += `<span class="move-white">${white ? white.move : ''}</span>`;
-            if (black) {
-                html += ` <span class="move-black">${black.move}</span>`;
-            }
-            html += `</div>`;
-            moveNum++;
-        }
-        historyModal.innerHTML = html || '<div style="color:#8aa3c9; text-align:center;">Tidak ada gerakan</div>';
-        
-        modal.classList.add('show');
-    }
-
-    // ===== REFRESH LOOP =====
-    function startRefreshLoop() {
-        if (refreshInterval) clearInterval(refreshInterval);
-        refreshInterval = setInterval(() => {
-            loadGameState();
-        }, 3000);
-    }
-
-    // ===== TOAST =====
-    function showToast(message, type = 'info') {
-        const existing = document.querySelector('.toast');
-        if (existing) existing.remove();
-        const toast = document.createElement('div');
-        toast.className = `toast ${type}`;
-        toast.textContent = message;
-        toast.style.cssText = `
-            position: fixed; bottom: 20px; right: 20px; 
-            padding: 0.8rem 1.5rem; border-radius: 1rem; 
-            color: white; font-weight: 600; z-index: 9999;
-            animation: slideUp 0.3s ease; max-width: 350px;
-            background: ${type === 'success' ? '#3d7a4a' : type === 'error' ? '#7a4a4a' : '#2f5b8a'};
-        `;
-        document.body.appendChild(toast);
-        setTimeout(() => { toast.remove(); }, 3000);
-    }
-
-    // ===== RESIGN BUTTON =====
-    document.getElementById('resignBtn').addEventListener('click', async function() {
-        if (isProcessing || isResigning) return;
-        if (!gameActive || gameOver) {
-            showToast('⚠️ Game sudah selesai', 'info');
-            return;
-        }
-        
-        if (!confirm('Yakin ingin menyerah? ELO akan turun.')) return;
-        
-        isResigning = true;
-        isProcessing = true;
-        this.disabled = true;
-        this.textContent = '⏳ Memproses...';
-        
-        try {
-            const user = getUserSession();
-            if (!user) {
-                window.location.href = 'dashboard.html';
-                return;
-            }
-            
-            const data = await getData();
-            const currentUser = data.users.find(u => u.userId === user.userId);
-            const opponent = data.users.find(u => u.userId === (isHost ? room.player2Id : room.hostId));
-            
-            if (currentUser && opponent) {
-                const calc = calculateEloChange(opponent.elo || 100, currentUser.elo || 100);
-                const penalty = calc.penalty;
-                rewardAmount = -penalty;
-                currentUser.elo = Math.max(0, (currentUser.elo || 100) - penalty);
-                opponent.elo = Math.min(3000, (opponent.elo || 100) + calc.reward);
-                
-                if (currentUser.elo >= 2000) currentUser.rank = 'Grandmaster';
-                else if (currentUser.elo >= 1700) currentUser.rank = 'Master';
-                else if (currentUser.elo >= 1400) currentUser.rank = 'Ahli';
-                else if (currentUser.elo >= 1200) currentUser.rank = 'Menengah';
-                else currentUser.rank = 'Pemula';
-                
-                if (opponent.elo >= 2000) opponent.rank = 'Grandmaster';
-                else if (opponent.elo >= 1700) opponent.rank = 'Master';
-                else if (opponent.elo >= 1400) opponent.rank = 'Ahli';
-                else if (opponent.elo >= 1200) opponent.rank = 'Menengah';
-                else opponent.rank = 'Pemula';
-                
-                currentUser.gamesPlayed = (currentUser.gamesPlayed || 0) + 1;
-                currentUser.currentStreak = 0;
-                
-                opponent.gamesPlayed = (opponent.gamesPlayed || 0) + 1;
-                opponent.gamesWon = (opponent.gamesWon || 0) + 1;
-                opponent.currentStreak = (opponent.currentStreak || 0) + 1;
-                
-                await updateData(data);
-                
-                localStorage.setItem('chess_user', JSON.stringify({
-                    userId: currentUser.userId,
-                    username: currentUser.username,
-                    elo: currentUser.elo,
-                    rank: currentUser.rank
-                }));
-            }
-            
-            gameActive = false;
-            gameOver = true;
-            if (refreshInterval) clearInterval(refreshInterval);
-            
-            const analysis = analyzeGame('opponent');
-            await saveGameState();
-            await deleteRoom();
-            showAnalysisModal(false, false, analysis);
-            
-        } catch (error) {
-            console.error('Error resigning:', error);
-            showToast('❌ Gagal menyerah, coba lagi', 'error');
-        } finally {
-            isProcessing = false;
-            isResigning = false;
-            this.disabled = false;
-            this.textContent = '🏳️ Menyerah';
-        }
-    });
-
-    // ===== BACK TO DASHBOARD =====
-    document.getElementById('backToDashboardBtn').addEventListener('click', async function(e) {
-        e.preventDefault();
-        if (isProcessing || isResigning) return;
-        
-        if (gameActive && !gameOver) {
-            if (confirm('Anda sedang dalam permainan! Keluar akan dianggap menyerah. Lanjutkan?')) {
-                document.getElementById('resignBtn').click();
-            }
-            return;
-        } else {
-            await deleteRoom();
-            localStorage.removeItem('online_room');
-            window.location.href = 'dashboard.html';
-        }
-    });
-
-    // ===== MODAL CLOSE =====
-    modalCloseBtn.addEventListener('click', async () => {
-        modal.classList.remove('show');
+    
+    // Hapus room dengan aman
+    try {
         await deleteRoom();
-        localStorage.removeItem('online_room');
-        window.location.href = 'dashboard.html';
-    });
+    } catch (error) {
+        console.error('Error deleting room:', error);
+        // Tetap lanjutkan meskipun delete room gagal
+    }
+    
+    showAnalysisModal(isWinner, isStalemate, analysis);
+}
 
-    // ===== COPY ROOM =====
-    document.getElementById('copyRoomBtn').addEventListener('click', () => {
-        navigator.clipboard.writeText(roomId).then(() => {
-            showToast('✅ ID Room disalin!', 'success');
-        }).catch(() => {
-            const input = document.createElement('input');
-            input.value = roomId;
-            document.body.appendChild(input);
-            input.select();
-            document.execCommand('copy');
-            document.body.removeChild(input);
-            showToast('✅ ID Room disalin!', 'success');
-        });
-    });
-
-    // ===== INIT =====
-    async function init() {
-        const roomSession = getRoomSession();
-        if (!roomSession) {
-            window.location.href = 'dashboard.html';
-            return;
+// ===== DELETE ROOM =====
+async function deleteRoom() {
+    try {
+        const data = await getData();
+        if (!data.rooms) return;
+        
+        const roomIndex = data.rooms.findIndex(r => r.roomId === roomId);
+        if (roomIndex !== -1) {
+            data.rooms.splice(roomIndex, 1);
+            
+            // Hapus challenges yang terkait
+            if (data.users) {
+                data.users.forEach(user => {
+                    if (user.challenges) {
+                        user.challenges = user.challenges.filter(c => c.roomId !== roomId);
+                    }
+                });
+            }
+            
+            await updateData(data);
+            console.log('✅ Room deleted:', roomId);
+            return true;
         }
+        return false;
+    } catch (error) {
+        console.error('Error deleting room:', error);
+        throw error;
+    }
+}
 
-        roomId = roomSession.roomId;
-        isHost = roomSession.isHost;
+// ===== SHOW ANALYSIS MODAL =====
+function showAnalysisModal(isWinner, isStalemate, analysis) {
+    const rewardText = rewardAmount > 0 ? `+${rewardAmount} ELO` : 
+                      rewardAmount < 0 ? `${rewardAmount} ELO` : '0 ELO';
+    
+    if (isStalemate) {
+        resultIcon.textContent = '⚖️';
+        modalTitle.textContent = '🤝 Stalemate! Seri';
+        modalSub.textContent = 'Permainan berakhir imbang.';
+    } else if (isWinner) {
+        resultIcon.textContent = '🏆';
+        modalTitle.textContent = '🎉 Anda Menang!';
+        modalSub.textContent = `${rewardText}! Pertandingan brilian!`;
+    } else {
+        resultIcon.textContent = '💀';
+        modalTitle.textContent = '💀 Anda Kalah';
+        modalSub.textContent = `${rewardText}. Coba lagi!`;
+    }
+    
+    document.getElementById('accuracy').textContent = (analysis.accuracy || 0) + '%';
+    document.getElementById('gameRating').textContent = analysis.rating || 'Pemula';
+    document.getElementById('goodMoves').textContent = analysis.goodMoves || 0;
+    document.getElementById('blunders').textContent = analysis.blunders || 0;
+    document.getElementById('gameSpeed').textContent = analysis.avgSpeed ? analysis.avgSpeed.toFixed(1) + 's' : '--';
+    document.getElementById('eloReward').textContent = rewardText;
+    
+    const historyModal = document.getElementById('moveHistoryModal');
+    historyModal.innerHTML = '';
+    let moveNum = 1;
+    let html = '';
+    for (let i = 0; i < gameMoves.length; i += 2) {
+        const white = gameMoves[i];
+        const black = gameMoves[i+1];
+        html += `<div>`;
+        html += `<span class="move-num">${moveNum}.</span>`;
+        html += `<span class="move-white">${white ? white.move : ''}</span>`;
+        if (black) {
+            html += ` <span class="move-black">${black.move}</span>`;
+        }
+        html += `</div>`;
+        moveNum++;
+    }
+    historyModal.innerHTML = html || '<div style="color:#8aa3c9; text-align:center;">Tidak ada gerakan</div>';
+    
+    modal.classList.add('show');
+}
 
+// ===== REFRESH LOOP =====
+function startRefreshLoop() {
+    if (refreshInterval) clearInterval(refreshInterval);
+    refreshInterval = setInterval(() => {
+        loadGameState();
+    }, 3000);
+}
+
+// =============================================
+// ===== FIX: RESIGN BUTTON =====
+// =============================================
+document.getElementById('resignBtn').addEventListener('click', async function() {
+    // Cek jika sedang diproses atau game sudah selesai
+    if (isProcessing || isResigning || isRedirecting) {
+        console.log('⏳ Sedang diproses, abaikan');
+        return;
+    }
+    
+    if (!gameActive || gameOver) {
+        showToast('⚠️ Game sudah selesai', 'info');
+        return;
+    }
+    
+    if (!confirm('Yakin ingin menyerah? ELO akan turun.')) return;
+    
+    // Set flag processing
+    isProcessing = true;
+    isResigning = true;
+    this.disabled = true;
+    this.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Memproses...';
+    
+    try {
+        console.log('🏳️ Memulai proses menyerah...');
+        
+        // 1. Dapatkan data user
         const user = getUserSession();
         if (!user) {
+            console.log('❌ User tidak ditemukan, redirect ke login');
             window.location.href = 'index.html';
             return;
         }
+        
+        // 2. Ambil data dari JSONBin
+        const data = await getData();
+        const currentUser = data.users.find(u => u.userId === user.userId);
+        const opponent = data.users.find(u => u.userId === (isHost ? room.player2Id : room.hostId));
+        
+        if (!currentUser || !opponent) {
+            console.log('❌ User atau opponent tidak ditemukan');
+            showToast('❌ Gagal menyerah: data tidak ditemukan', 'error');
+            this.disabled = false;
+            this.innerHTML = '<i class="fas fa-flag"></i> Menyerah';
+            isProcessing = false;
+            isResigning = false;
+            return;
+        }
+        
+        console.log(`👤 User: ${currentUser.username}, Opponent: ${opponent.username}`);
+        
+        // 3. Hitung ELO
+        const calc = calculateEloChange(opponent.elo || 100, currentUser.elo || 100);
+        const penalty = calc.penalty;
+        rewardAmount = -penalty;
+        
+        // 4. Update ELO
+        currentUser.elo = Math.max(0, (currentUser.elo || 100) - penalty);
+        opponent.elo = Math.min(3000, (opponent.elo || 100) + calc.reward);
+        
+        // 5. Update rank
+        const updateRank = (user) => {
+            if (user.elo >= 2000) user.rank = 'Grandmaster';
+            else if (user.elo >= 1700) user.rank = 'Master';
+            else if (user.elo >= 1400) user.rank = 'Ahli';
+            else if (user.elo >= 1200) user.rank = 'Menengah';
+            else user.rank = 'Pemula';
+        };
+        updateRank(currentUser);
+        updateRank(opponent);
+        
+        // 6. Update stats
+        currentUser.gamesPlayed = (currentUser.gamesPlayed || 0) + 1;
+        currentUser.currentStreak = 0;
+        
+        opponent.gamesPlayed = (opponent.gamesPlayed || 0) + 1;
+        opponent.gamesWon = (opponent.gamesWon || 0) + 1;
+        opponent.currentStreak = (opponent.currentStreak || 0) + 1;
+        
+        // 7. Simpan ke JSONBin
+        await updateData(data);
+        console.log('✅ Data ELO berhasil disimpan');
+        
+        // 8. Update localStorage
+        localStorage.setItem('chess_user', JSON.stringify({
+            userId: currentUser.userId,
+            username: currentUser.username,
+            elo: currentUser.elo,
+            rank: currentUser.rank
+        }));
+        
+        // 9. Set game state
+        gameActive = false;
+        gameOver = true;
+        if (refreshInterval) clearInterval(refreshInterval);
+        
+        // 10. Analisis game
+        const analysis = analyzeGame('opponent');
+        
+        // 11. Hapus room
+        try {
+            await deleteRoom();
+            console.log('✅ Room berhasil dihapus');
+        } catch (deleteError) {
+            console.warn('⚠️ Gagal hapus room:', deleteError);
+            // Lanjutkan meskipun delete room gagal
+        }
+        
+        // 12. Tampilkan modal
+        showAnalysisModal(false, false, analysis);
+        
+        // 13. Reset flag
+        isProcessing = false;
+        isResigning = false;
+        this.disabled = false;
+        this.innerHTML = '<i class="fas fa-flag"></i> Menyerah';
+        
+        console.log('✅ Proses menyerah selesai');
+        
+    } catch (error) {
+        console.error('❌ Error saat menyerah:', error);
+        showToast('❌ Gagal menyerah: ' + (error.message || 'Unknown error'), 'error');
+        
+        // Reset button
+        this.disabled = false;
+        this.innerHTML = '<i class="fas fa-flag"></i> Menyerah';
+        isProcessing = false;
+        isResigning = false;
+    }
+});
 
-        roomIdDisplay.textContent = `🏠 Room: ${roomId}`;
-        board = createEmptyBoard();
-        renderBoard();
+// =============================================
+// ===== FIX: BACK TO DASHBOARD =====
+// =============================================
+document.getElementById('backToDashboardBtn').addEventListener('click', async function(e) {
+    e.preventDefault();
+    
+    if (isRedirecting) return;
+    
+    // Cek apakah sedang dalam game aktif
+    if (gameActive && !gameOver) {
+        if (!confirm('Anda sedang dalam permainan! Keluar akan dianggap menyerah. Lanjutkan?')) {
+            return;
+        }
+        
+        // Trigger resign dengan timeout
+        isRedirecting = true;
+        const resignBtn = document.getElementById('resignBtn');
+        
+        // Cek apakah button resign available
+        if (resignBtn && !resignBtn.disabled) {
+            console.log('🔄 Memanggil resign dari back button');
+            resignBtn.click();
+            
+            // Tunggu sebentar, jika belum selesai, force redirect
+            let waitTime = 0;
+            const checkInterval = setInterval(() => {
+                waitTime += 500;
+                if (gameOver || waitTime >= 5000) {
+                    clearInterval(checkInterval);
+                    if (!gameOver) {
+                        console.warn('⚠️ Timeout resign, force redirect');
+                        showToast('⚠️ Menyerah diproses, redirect...', 'info');
+                    }
+                    // Hapus room dan redirect
+                    deleteRoom().finally(() => {
+                        localStorage.removeItem('online_room');
+                        window.location.href = 'dashboard.html';
+                    });
+                }
+            }, 500);
+        } else {
+            // Jika resign button tidak bisa diklik, langsung redirect
+            console.log('⚠️ Resign button tidak tersedia, direct redirect');
+            deleteRoom().finally(() => {
+                localStorage.removeItem('online_room');
+                window.location.href = 'dashboard.html';
+            });
+        }
+    } else {
+        // Game sudah selesai, langsung redirect
+        console.log('🔄 Redirect ke dashboard (game selesai)');
+        try {
+            await deleteRoom();
+        } catch (e) {
+            console.warn('⚠️ Gagal hapus room:', e);
+        }
+        localStorage.removeItem('online_room');
+        window.location.href = 'dashboard.html';
+    }
+});
 
-        await loadGameState();
-        startRefreshLoop();
+// =============================================
+// ===== FIX: MODAL CLOSE =====
+// =============================================
+modalCloseBtn.addEventListener('click', async () => {
+    if (isRedirecting) return;
+    isRedirecting = true;
+    
+    modal.classList.remove('show');
+    
+    try {
+        await deleteRoom();
+    } catch (e) {
+        console.warn('⚠️ Gagal hapus room:', e);
+    }
+    
+    localStorage.removeItem('online_room');
+    window.location.href = 'dashboard.html';
+});
+
+// =============================================
+// ===== FIX: COPY ROOM =====
+// =============================================
+document.getElementById('copyRoomBtn').addEventListener('click', () => {
+    navigator.clipboard.writeText(roomId).then(() => {
+        showToast('✅ ID Room disalin!', 'success');
+    }).catch(() => {
+        const input = document.createElement('input');
+        input.value = roomId;
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand('copy');
+        document.body.removeChild(input);
+        showToast('✅ ID Room disalin!', 'success');
+    });
+});
+
+// =============================================
+// ===== INIT =====
+// =============================================
+async function init() {
+    const roomSession = getRoomSession();
+    if (!roomSession) {
+        window.location.href = 'dashboard.html';
+        return;
     }
 
-    const style = document.createElement('style');
-    style.textContent = `
-        @keyframes slideUp { 0% { transform: translateY(50px); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
-        .toast { animation: slideUp 0.3s ease; }
-    `;
-    document.head.appendChild(style);
+    roomId = roomSession.roomId;
+    isHost = roomSession.isHost;
 
-    init();
-</script>
+    const user = getUserSession();
+    if (!user) {
+        window.location.href = 'index.html';
+        return;
+    }
+
+    roomIdDisplay.textContent = `🏠 Room: ${roomId}`;
+    board = createEmptyBoard();
+    renderBoard();
+
+    await loadGameState();
+    startRefreshLoop();
+}
+
+// Tambahkan style untuk toast
+const style = document.createElement('style');
+style.textContent = `
+    @keyframes slideUp { 
+        0% { transform: translateY(50px); opacity: 0; } 
+        100% { transform: translateY(0); opacity: 1; } 
+    }
+    .toast { animation: slideUp 0.3s ease; }
+`;
+document.head.appendChild(style);
+
+// Start
+init();</script>
 </body>
 </html>
