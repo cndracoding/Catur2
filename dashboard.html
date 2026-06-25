@@ -1099,7 +1099,7 @@
             });
             if (!response.ok) {
                 console.error('HTTP Error:', response.status);
-                throw new Error('Gagal menyimpan数据');
+                throw new Error('Gagal menyimpan data');
             }
             const result = await response.json();
             console.log('✅ Data saved successfully!');
@@ -1665,9 +1665,15 @@
             const currentUser = data.users.find(u => u.userId === user.userId);
             if (!currentUser) return;
 
+            // INISIALISASI CHALLENGES JIKA BELUM ADA
+            if (!currentUser.challenges) {
+                currentUser.challenges = [];
+                await updateData(data);
+            }
+
             const challenges = currentUser.challenges || [];
             
-            // Filter challenge yang sudah kadaluarsa (room tidak ada atau sudah selesai)
+            // Filter challenge yang sudah kadaluarsa
             const validChallenges = [];
             for (const challenge of challenges) {
                 const room = data.rooms?.find(r => r.roomId === challenge.roomId);
@@ -1702,7 +1708,6 @@
                 const sender = data.users.find(u => u.userId === challenge.fromId);
                 if (!sender) continue;
 
-                // Cek apakah room masih aktif
                 const room = data.rooms?.find(r => r.roomId === challenge.roomId);
                 const isRoomActive = room && (room.status === 'waiting' || room.status === 'playing');
 
